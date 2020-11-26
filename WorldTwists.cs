@@ -41,6 +41,7 @@ namespace WorldTwists {
         [Label("Randomized Blocks seed")]
         [Tooltip("The seed for Block Randomization, ignored if \"Randomized Blocks uses world seed\" is on")]
         [DefaultValue(0)]
+        [Range(int.MinValue, int.MaxValue)]
         public int RandomizeSeed = 0;
 
         [Label("Randomized Blocks uses complex seed")]
@@ -50,10 +51,12 @@ namespace WorldTwists {
 
         [Label("Complex seed inext")]
         [DefaultValue(0)]
+        [Range(int.MinValue, int.MaxValue)]
         public int inext = 0;
 
         [Label("Complex seed inextp")]
         [DefaultValue(0)]
+        [Range(int.MinValue, int.MaxValue)]
         public int inextp = 0;
         [Header("Randomize")]
 
@@ -107,6 +110,10 @@ namespace WorldTwists {
         [Label("Include Unstable Blocks")]
         [DefaultValue(false)]
         public bool RandomizeBoulders = false;
+
+        [Label("Include Falling Blocks")]
+        [DefaultValue(true)]
+        public bool Sandomize = true;
     }
     public class TwistWorld : ModWorld {
         public override void ModifyWorldGenTasks(List<GenPass> tasks, ref float totalWeight) {
@@ -136,6 +143,11 @@ namespace WorldTwists {
             List<ushort> invalidTypes = new List<ushort>(){};
             if(!TwistConfig.Instance.RandomizeBoulders) {
                 invalidTypes.Add(TileID.Boulder);
+            }
+            if(!TwistConfig.Instance.Sandomize) {
+                for(ushort i = 0; i < TileID.Sets.Falling.Length; i++) {
+                    if(TileID.Sets.Falling[i])invalidTypes.Add(i);
+                }
             }
             if(!TwistConfig.Instance.JankLoot) {
                 invalidTypes.Add(TileID.ClosedDoor);
@@ -179,8 +191,9 @@ namespace WorldTwists {
             string log = "";
             for(int i = 0; i < types.Count; i++) {
                 pairings.Add(types[i],shuffledTypes[i]);
-                log+=$"({types[i]},{shuffledTypes[i]}) ";
+                log+=$"[{types[i]} ({getTileName(types[i])}),{shuffledTypes[i]} ({getTileName(shuffledTypes[i])})] ";
             }
+            //TileID.Sets.Falling
             for(int i = 0; i < invalidTypes.Count; i++) {
                 pairings.Add(invalidTypes[i],invalidTypes[i]);
             }
@@ -190,7 +203,7 @@ namespace WorldTwists {
                     try {
                         if(Main.tile[x, y].active()&&TwistExt.solid(Main.tile[x, y].type))
                             Main.tile[x, y].type = pairings[Main.tile[x, y].type];
-                        if(Main.tileCut[Main.tile[x, y].type])
+                        if(Main.tileCut[Main.tile[x, y].type]&&Main.tile[x, y].type!=TileID.Pots)
                             Main.tile[x, y].active(false);
                     } catch(Exception e) {
                         WorldTwists.Instance.Logger.Info("Randomize: Ran into issue randomizing "+Main.tile[x, y].type);
@@ -198,6 +211,9 @@ namespace WorldTwists {
                     }
                 }
             }
+        }
+        static string getTileName(int type) {
+            return type<TileID.Count ? TileID.Search.GetName(type) : TileLoader.GetTile(type).Name;
         }
         public static void Invert(GenerationProgress progress) {
             WorldTwists.Instance.Logger.Info("Inverting Blocks");
