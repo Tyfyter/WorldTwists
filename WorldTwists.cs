@@ -68,19 +68,6 @@ namespace WorldTwists {
         [Label("Randomize Blocks")]
         [DefaultValue(false)]
         public bool Randomize = false;
-        [Header("Randomize")]
-
-        [Label("Complex seed SeedArray")]
-        public List<int> SeedArrayList {
-            get => SeedArray;
-            set {
-                if(value.Count>56) {
-                    value.RemoveRange(56, value.Count-56);
-                } else for(; value.Count<56; value.Add(0)) ;
-                SeedArray = value;
-            }
-        }
-        internal List<int> SeedArray = new List<int>(56);
         //internal int[] SeedArray = new int[56];
         /*[DefaultValue(new int[56]{
             0,0,0,0,0,0,0,0,0,0,
@@ -106,12 +93,10 @@ namespace WorldTwists {
             set { LiquidCycle = (sbyte)value; }
         }
         internal sbyte LiquidCycle = 0;
-
-        [Header("Other Changes")]
         [Label("Mini Worlds")]
         [DefaultValue(false)]
         [Tooltip("Note the plural")]
-        public bool GreatEnsmallening = true;
+        public bool GreatEnsmallening { get; set; } = true;
         [Label("Mini World Underground Spawn")]
         [Tooltip("-1:never, 0:50/50, 1:always")]
         [DefaultValue(0)]
@@ -143,6 +128,19 @@ namespace WorldTwists {
         [Label("Maintain Biomes")]
         [DefaultValue(false)]
         public bool KeepDungeon = false;
+
+        [Header("Randomize/Shuffle")]
+        [Label("Complex seed SeedArray")]
+        public List<int> SeedArrayList {
+            get => SeedArray;
+            set {
+                if(value.Count>56) {
+                    value.RemoveRange(56, value.Count-56);
+                } else for(; value.Count<56; value.Add(0)) ;
+                SeedArray = value;
+            }
+        }
+        internal List<int> SeedArray = new List<int>(56);
     }
     public class TwistWorld : ModWorld {
         public override void ModifyWorldGenTasks(List<GenPass> tasks, ref float totalWeight) {
@@ -415,7 +413,7 @@ namespace WorldTwists {
                     }
                 }*/
                 try {
-                    MultiTileUtils.AggressivelyPlace(new Microsoft.Xna.Framework.Point(c.x, c.y), chestTile.type, chestTile.frameX / MultiTileUtils.GetStyleWidth(chestTile.type));
+                    MultiTileUtils.AggressivelyPlace(new Point(c.x, c.y), chestTile.type, chestTile.frameX / MultiTileUtils.GetStyleWidth(chestTile.type));
                 } catch(Exception e) {
                     WorldTwists.Instance.Logger.Warn(e);
                     Exception _ = e;
@@ -496,7 +494,7 @@ namespace WorldTwists {
         }
         private bool oldDayTime;
         public override void PostUpdate() {
-            if(Main.dayTime!=oldDayTime&&!NPC.downedBoss3&&NPC.CountNPCS(NPCID.OldMan)<1) {
+            if(smol&&Main.dayTime!=oldDayTime&&!NPC.downedBoss3&&NPC.CountNPCS(NPCID.OldMan)<1) {
                 NPC.NewNPC(Main.dungeonX*16,Main.dungeonY*16,NPCID.OldMan);
             }
             oldDayTime = Main.dayTime;
