@@ -1,3 +1,4 @@
+using Microsoft.Xna.Framework;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -13,6 +14,7 @@ using Terraria.ModLoader.Config;
 using Terraria.ModLoader.IO;
 using Terraria.Utilities;
 using Terraria.World.Generation;
+using Tyfyter.Utils;
 
 namespace WorldTwists {
 	public class WorldTwists : Mod {
@@ -63,6 +65,11 @@ namespace WorldTwists {
         public int inextp = 0;
         [Header("Randomize")]
 
+        [Label("Randomize Blocks")]
+        [DefaultValue(false)]
+        public bool Randomize = false;
+        [Header("Randomize")]
+
         [Label("Complex seed SeedArray")]
         public List<int> SeedArrayList {
             get => SeedArray;
@@ -89,7 +96,7 @@ namespace WorldTwists {
         [DefaultValue(false)]
         public bool Inverted = false;
 
-        [Header("Minor Changes")]
+        [Header("Other Changes")]
         [Label("Liquid Cycling")]
         [DefaultValue(0)]
         [Tooltip("-1 = Water->Honey->Lava->Water, 1 = Water->Lava->Honey->Water")]
@@ -99,6 +106,21 @@ namespace WorldTwists {
             set { LiquidCycle = (sbyte)value; }
         }
         internal sbyte LiquidCycle = 0;
+
+        [Header("Other Changes")]
+        [Label("Mini Worlds")]
+        [DefaultValue(false)]
+        [Tooltip("Note the plural")]
+        public bool GreatEnsmallening = true;
+        [Label("Mini World Underground Spawn")]
+        [Tooltip("-1:never, 0:50/50, 1:always")]
+        [DefaultValue(0)]
+        [Range(-1, 1)]
+        public int HipsterSpawnSkewInt {
+            get => HipsterSpawnSkew;
+            set { HipsterSpawnSkew = (sbyte)value; }
+        }
+        internal sbyte HipsterSpawnSkew = 0;
 
         [Header("Universal")]
 
@@ -125,13 +147,15 @@ namespace WorldTwists {
     public class TwistWorld : ModWorld {
         public override void ModifyWorldGenTasks(List<GenPass> tasks, ref float totalWeight) {
 
-            if(TwistConfig.Instance.Shuffled) tasks.Add(new PassLegacy("Randomize", ShuffledBlocks));
+            if(TwistConfig.Instance.Shuffled) tasks.Add(new PassLegacy("Shuffle", ShuffledBlocks));
             else if(TwistConfig.Instance.Inverted) tasks.Add(new PassLegacy("Rarity Invert", Invert));
-            else if(TwistConfig.Instance.Inverted) tasks.Add(new PassLegacy("Rarity Invert", Invert));
+            else if(TwistConfig.Instance.Randomize) tasks.Add(new PassLegacy("Randomize", RandomizedBlocks));
             if(TwistConfig.Instance.LiquidCycle!=0) {
-                //int genIndex = tasks.FindIndex(genpass => genpass.Name.Equals("Settle Liquids"));
                 int genIndex = tasks.FindIndex(genpass => genpass.Name.Equals("Settle Liquids Again"));
                 tasks.Insert(genIndex, new PassLegacy("Cycle Liquids", LiquidCycle));
+            }
+            if(TwistConfig.Instance.GreatEnsmallening) {
+                tasks.Add(new PassLegacy("Mini Worlds", GreatEnsmallener));
             }
         }
         public static void LiquidCycle(GenerationProgress progress) {
@@ -352,6 +376,80 @@ namespace WorldTwists {
                 }
             }
         }
+        public static void GreatEnsmallener(GenerationProgress progress) {
+            progress.Message = "Ensmallening";
+            int width = Main.maxTilesX;
+            int height = Main.maxTilesY;
+            int halfX = width/2;
+            int halfY = height/2;
+            int x, y;
+            Tile[,] tiles = new Tile[Main.tile.GetLength(0),Main.tile.GetLength(1)];
+            for(int y1 = 0; y1 < height; y1++) {
+                for(int x1 = 0; x1 < width; x1++) {
+                    x = x1/2+((x1%2)*halfX);
+                    y = y1/2+((y1%2)*halfY);
+                    tiles[x,y] = Main.tile[x1, y1];
+                }
+            }
+            for(int y2 = 0; y2 < height; y2++) {
+                for(int x2 = 0; x2 < width; x2++) {
+                    Main.tile[x2, y2] = tiles[x2, y2];
+                }
+            }
+            Chest c;
+            Tile chestTile;
+            //Tile[,] chestTiles = new Tile[3,3];
+            for(int i = 0; i < Main.chest.Length; i++) {
+                c = Main.chest[i];
+                if(c is null) {
+                    continue;
+                }
+                c.x = c.x/2+((c.x%2)*halfX);
+                c.y = c.y/2+((c.y%2)*halfY);
+                chestTile = Main.tile[c.x, c.y];
+                c.y--;
+                /*chestTiles = new Tile[3, 3];
+                for(int cy = -1; cy < 2; cy++) {
+                    for(int cx = -1; cx < 2; cx++) {
+                        chestTiles[cx + 1, cy + 1] = Main.tile[c.x+cx, c.y+cy];
+                    }
+                }*/
+                try {
+                    MultiTileUtils.AggressivelyPlace(new Microsoft.Xna.Framework.Point(c.x, c.y), chestTile.type, chestTile.frameX / MultiTileUtils.GetStyleWidth(chestTile.type));
+                } catch(Exception e) {
+                    WorldTwists.Instance.Logger.Warn(e);
+                    Exception _ = e;
+                }
+            }
+            Main.spawnTileX = (Main.spawnTileX / 2) + WorldGen.genRand.Next(2) * halfX;
+            Main.spawnTileY = (Main.spawnTileY / 2) + (WorldGen.genRand.Next(2) + TwistConfig.Instance.HipsterSpawnSkew>0 ? halfY : 0);
+            Main.dungeonX = (Main.dungeonX / 2) + WorldGen.genRand.Next(2) * halfX;
+            Main.dungeonY = (Main.dungeonY / 2);
+            int npci;
+            for(npci = 0;npci<Main.npc.Length;npci++){
+	            if(Main.npc[npci].type==NPCID.OldMan){
+		            break;
+	            }
+            }
+            if(npci<201) {
+                Main.npc[npci].position = new Vector2(Main.dungeonX,Main.dungeonY)*16;
+            }
+            for(npci = 0;npci<Main.npc.Length;npci++){
+	            if(Main.npc[npci].type==NPCID.Guide){
+		            break;
+	            }
+            }
+            if(npci<201) {
+                Main.npc[npci].position.X = Main.npc[npci].position.X + (WorldGen.genRand.Next(2) * halfX*16);
+                Main.npc[npci].position.Y = Main.spawnTileY;
+            }
+            smol = true;
+        }
+        public bool _smol = false;
+        public static bool smol {
+            get => ModContent.GetInstance<TwistWorld>()._smol;
+            set => ModContent.GetInstance<TwistWorld>()._smol = value;
+        }
         private Dictionary<ushort, ushort> _pairings;
         public static Dictionary<ushort, ushort> pairings {
             get => ModContent.GetInstance<TwistWorld>()._pairings;
@@ -360,6 +458,7 @@ namespace WorldTwists {
         public override TagCompound Save() {
             TagCompound tag = new TagCompound();
             try {
+                tag.Add("smol", smol);
                 if(pairings.Count>0) {
                     tag.Add("pairingKeys", pairings.Keys.ToList());
                     tag.Add("pairingValues", pairings.Values.ToList());
@@ -369,6 +468,7 @@ namespace WorldTwists {
         }
         public override void Load(TagCompound tag) {
             try {
+                if(tag.ContainsKey("smol"))smol = tag.GetBool("smol");
                 pairings = new Dictionary<ushort, ushort>() { };
                 if(!tag.ContainsKey("pairingKeys")||!tag.ContainsKey("pairingValues"))return;
                 List<ushort> keys = tag.Get<List<ushort>>("pairingKeys");
@@ -393,6 +493,13 @@ namespace WorldTwists {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void addTilePairing(ref int count, ushort id, int[] tileCounts) {
             if(pairings.ContainsKey(id)) count+=tileCounts[pairings[id]];
+        }
+        private bool oldDayTime;
+        public override void PostUpdate() {
+            if(Main.dayTime!=oldDayTime&&!NPC.downedBoss3&&NPC.CountNPCS(NPCID.OldMan)<1) {
+                NPC.NewNPC(Main.dungeonX*16,Main.dungeonY*16,NPCID.OldMan);
+            }
+            oldDayTime = Main.dayTime;
         }
     }
     public static class TwistExt {
