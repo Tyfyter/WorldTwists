@@ -11,10 +11,13 @@ using Terraria.GameContent.Generation;
 using Terraria.ID;
 using Terraria.ModLoader;
 using Terraria.ModLoader.Config;
+using Terraria.ModLoader.Default;
 using Terraria.ModLoader.IO;
 using Terraria.Utilities;
 using Terraria.World.Generation;
 using Tyfyter.Utils;
+using Tyfyter.Utils.ID;
+using static Tyfyter.Utils.StructureUtils.StructureTilePlacementType;
 
 namespace WorldTwists {
 	public class WorldTwists : Mod {
@@ -23,6 +26,7 @@ namespace WorldTwists {
             if(Instance!=null) Logger.Info("WorldTwists Instance already loaded at Load()");
             Instance = this;
         }
+
         public override void Unload() {
             TwistWorld.pairings = null;
             if(Instance==null) Logger.Info("WorldTwists Instance already unloaded at Unload()");
@@ -96,7 +100,7 @@ namespace WorldTwists {
         [Label("Mini Worlds")]
         [DefaultValue(false)]
         [Tooltip("Note the plural")]
-        public bool GreatEnsmallening { get; set; } = true;
+        public bool GreatEnsmallening { get; set; } = false;
         [Label("Mini World Underground Spawn")]
         [Tooltip("-1:never, 0:50/50, 1:always")]
         [DefaultValue(0)]
@@ -106,6 +110,15 @@ namespace WorldTwists {
             set { HipsterSpawnSkew = (sbyte)value; }
         }
         internal sbyte HipsterSpawnSkew = 0;
+        [Label("Flipped World")]
+        [DefaultValue(false)]
+        public bool Flipped { get; set; } = false;
+        [Label("Hardmode Start")]
+        [DefaultValue(false)]
+        public bool AlreadyHM { get; set; } = false;
+        [Label("Hardmode Start Spawns WoF loot")]
+        [DefaultValue(false)]
+        public bool HMPyramid { get; set; } = false;
 
         [Header("Universal")]
 
@@ -136,7 +149,7 @@ namespace WorldTwists {
             set {
                 if(value.Count>56) {
                     value.RemoveRange(56, value.Count-56);
-                } else for(; value.Count<56; value.Add(0)) ;
+                } else for(; value.Count<56; value.Add(0));
                 SeedArray = value;
             }
         }
@@ -152,8 +165,16 @@ namespace WorldTwists {
                 int genIndex = tasks.FindIndex(genpass => genpass.Name.Equals("Settle Liquids Again"));
                 tasks.Insert(genIndex, new PassLegacy("Cycle Liquids", LiquidCycle));
             }
+            if(TwistConfig.Instance.Flipped) {
+                tasks.Add(new PassLegacy("Flipping World", Flipper));
+                tasks.Add(tasks[tasks.FindIndex(genpass => genpass.Name.Equals("Settle Liquids Again"))]);
+            }
             if(TwistConfig.Instance.GreatEnsmallening) {
                 tasks.Add(new PassLegacy("Mini Worlds", GreatEnsmallener));
+            }
+            if(TwistConfig.Instance.AlreadyHM) {
+                if(!TwistConfig.Instance.HMPyramid)tasks.Add(new PassLegacy("Starting Hardmode", (p)=>WorldGen.StartHardmode()));
+                else tasks.Add(new PassLegacy("Starting Hardmode and Placing loot", HMLooter));
             }
         }
         public static void LiquidCycle(GenerationProgress progress) {
@@ -442,6 +463,167 @@ namespace WorldTwists {
                 Main.npc[npci].position.Y = Main.spawnTileY;
             }
             smol = true;
+        }
+        public static void Flipper(GenerationProgress progress) {
+            progress.Message = "Flipping";
+            int width = Main.maxTilesX;
+            int height = Main.maxTilesY;
+            int halfX = width/2;
+            int halfY = height/2;
+            int y;
+            int debX = -1;
+            Tile[,] tiles = new Tile[Main.tile.GetLength(0),Main.tile.GetLength(1)];
+            for(int y1 = 0; y1 < height; y1++) {
+                for(int x = 0; x < width; x++) {
+                    y = Main.maxTilesY - y1;
+                    tiles[x,y - 1] = Main.tile[x, y1];
+                    if(x>debX)debX = x;
+                }
+                y = y1;
+            }
+            debX = -1;
+            for(int y2 = 0; y2 < height; y2++) {
+                for(int x2 = 0; x2 < width; x2++) {
+                    Main.tile[x2, y2] = tiles[x2, y2];
+                    if(x2>debX)debX = x2;
+                }
+                y = y2;
+            }
+            Chest c;
+            Tile chestTile;
+            //Tile[,] chestTiles = new Tile[3,3];
+            for(int i = 0; i < Main.chest.Length; i++) {
+                c = Main.chest[i];
+                if(c is null) {
+                    continue;
+                }
+                c.y = Main.maxTilesY - c.y - 1;
+                chestTile = Main.tile[c.x, c.y];
+                /*chestTiles = new Tile[3, 3];
+                for(int cy = -1; cy < 2; cy++) {
+                    for(int cx = -1; cx < 2; cx++) {
+                        chestTiles[cx + 1, cy + 1] = Main.tile[c.x+cx, c.y+cy];
+                    }
+                }*/
+                try {
+                    MultiTileUtils.AggressivelyPlace(new Point(c.x, c.y), chestTile.type, chestTile.frameX / MultiTileUtils.GetStyleWidth(chestTile.type));
+                } catch(Exception e) {
+                    WorldTwists.Instance.Logger.Warn(e);
+                    Exception _ = e;
+                }
+            }
+            int found = 0;
+            for(y = 0; y < height; y++) {
+                Main.spawnTileY = y - 1;
+                if(Main.tileSolid[Main.tile[Main.spawnTileX, y].type]) {
+                    if(found>2)break;
+                    found = 0;
+                } else {
+                    found++;
+                }
+            }
+            //Main.spawnTileX = (Main.spawnTileX / 2) + WorldGen.genRand.Next(2) * halfX;
+            //Main.spawnTileY = Main.maxTilesY - Main.spawnTileY;//(Main.spawnTileY / 2) + (WorldGen.genRand.Next(2) + TwistConfig.Instance.HipsterSpawnSkew>0 ? halfY : 0);
+            //Main.dungeonX = (Main.dungeonX / 2) + WorldGen.genRand.Next(2) * halfX;
+            //Main.dungeonY = (Main.dungeonY / 2);
+            int npci;
+            for(npci = 0;npci<Main.npc.Length;npci++){
+	            if(Main.npc[npci].type==NPCID.OldMan){
+		            break;
+	            }
+            }
+            if(npci<201) {
+                Main.npc[npci].position = new Vector2(Main.dungeonX,Main.dungeonY)*16;
+            }
+            for(npci = 0;npci<Main.npc.Length;npci++){
+	            if(Main.npc[npci].type==NPCID.Guide){
+		            break;
+	            }
+            }
+            if(npci<201) {
+                Main.npc[npci].position.Y = Main.spawnTileY;
+            }
+        }
+        public static void HMLooter(GenerationProgress progress) {
+            progress.Message = "Starting Hardmode";
+            Item[] items = Main.item;
+            Main.item = new Item[Main.maxItems+1].Select((v)=>new Item()).ToArray();
+
+            NPC npc = Main.npc[NPC.NewNPC(16*16,16*16,NPCID.WallofFlesh)];
+            npc.NPCLoot();
+            npc.active = false;
+
+            Item[] loot = Main.item.Where((i)=>!i.IsAir).ToArray();
+            Main.item = items;
+
+			int centerI = (int)(npc.position.X + (npc.width / 2)) / 16;
+			int centerJ = (int)(npc.position.Y + (npc.height / 2)) / 16;
+			int size = npc.width / 2 / 16 + 1;
+			for (int i = centerI - size; i <= centerI + size; i++) {
+				for (int j = centerJ - size; j <= centerJ + size; j++) {
+					if ((i == centerI - size || i == centerI + size || j == centerJ - size || j == centerJ + size) && (Main.tile[i, j].type == 347 || Main.tile[i, j].type == 140)) {
+						Main.tile[i, j].active(active: false);
+					}
+					if (Main.netMode == NetmodeID.Server) {
+						NetMessage.SendTileSquare(-1, i, j, 1);
+					}
+				}
+			}
+            int x = Main.maxTilesX / 2;
+            int y = Main.maxTilesY - 150;
+            ushort brickType = WorldGen.crimson ? TileID.CrimtaneBrick : TileID.DemoniteBrick;
+            StructureUtils.Structure pyramid = new StructureUtils.Structure(
+            new string[]{
+            "   _____l_c__l_____   ",
+            "  ____qbbbbbbbbp____  ",
+            " ___qbbbbbbbbbbbbp___ ",
+            "__qbbbbbbbbbbbbbbbbp__",
+            "qbbbbbbbbbbbbbbbbbbbbp"
+            },
+            new Dictionary<char, StructureUtils.StructureTile>(){
+            {'b',new StructureUtils.StructureTile(brickType, ReplaceOld)},
+            {'q',new StructureUtils.StructureTile(brickType, ReplaceOld, SlopeID.BottomRight)},
+            {'p',new StructureUtils.StructureTile(brickType, ReplaceOld, SlopeID.BottomLeft)},
+            {'c',new StructureUtils.StructureTile(TileID.Containers, RequiredTile|MultiTile, 0, 44)},
+            {'l',new StructureUtils.StructureTile(TileID.Lamps, RequiredTile|MultiTile, 0, 23)},
+            {'_',new StructureUtils.StructureTile(0, OptionalTile|Deactivate)},
+            {' ',new StructureUtils.StructureTile(0, Nothing)}
+            }
+            );
+            StructureUtils.Structure pillar = new StructureUtils.Structure(
+            new string[]{"bbbbbbbbbbbbbbbbbbbbbb"},
+            new Dictionary<char, StructureUtils.StructureTile>(){{'b',new StructureUtils.StructureTile(brickType, OptionalTile)}}
+            );
+            int succ = 0;
+            int xoff = 0;
+            while(succ == 0&&xoff<x*0.75f) {
+                succ = pyramid.Place(x+xoff, y);
+                if(succ>0)break;
+                if(xoff < 0) {
+                    xoff = -xoff;
+                } else {
+                    xoff = (-xoff)-1;
+                }
+            }
+            y += 4;
+            while(succ>0) {
+                succ = pillar.Place(x+xoff, ++y);
+            }
+            Chest chest = Main.chest[pyramid.createdChests.Dequeue()];
+            if(loot.Length<=Chest.maxItems) {
+                loot.CopyTo(chest.item, 0);
+            } else {
+                chest.item[39].SetDefaults(ModContent.ItemType<StartBag>());
+                StartBag bag = chest.item[39].modItem as StartBag;
+                MethodInfo addItem = typeof(StartBag).GetMethod("AddItem", BindingFlags.Instance|BindingFlags.NonPublic);
+                int i = 0;
+                for(; i < 39; i++) {
+                    chest.item[i] = loot[i];
+                }
+                for(; i < loot.Length; i++) {
+                    addItem.Invoke(bag, new object[]{loot[i]});
+                }
+            }
         }
         public bool _smol = false;
         public static bool smol {
