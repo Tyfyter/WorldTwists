@@ -18,6 +18,7 @@ using Terraria.World.Generation;
 using Tyfyter.Utils;
 using Tyfyter.Utils.ID;
 using static Tyfyter.Utils.StructureUtils.StructureTilePlacementType;
+//using OnDebug;
 
 namespace WorldTwists {
 	public class WorldTwists : Mod {
@@ -81,13 +82,24 @@ namespace WorldTwists {
             0,0,0,0,0,0,0,0,0,0,
             0,0,0,0,0,0})]*/
 
+
         [Header("Rarity Invert")]
 
         [Label("Invert Blocks")]
         [DefaultValue(false)]
         public bool Inverted = false;
 
+
+        [Header("Shear")]
+
+        [Label("Shear")]
+        [DefaultValue(0)]
+        [Range(-4000, 4000)]
+        public int Shear = 0;
+
+
         [Header("Other Changes")]
+
         [Label("Liquid Cycling")]
         [DefaultValue(0)]
         [Tooltip("-1 = Water->Honey->Lava->Water, 1 = Water->Lava->Honey->Water")]
@@ -97,10 +109,12 @@ namespace WorldTwists {
             set { LiquidCycle = (sbyte)value; }
         }
         internal sbyte LiquidCycle = 0;
+
         [Label("Mini Worlds")]
         [DefaultValue(false)]
         [Tooltip("Note the plural")]
         public bool GreatEnsmallening { get; set; } = false;
+
         [Label("Mini World Underground Spawn")]
         [Tooltip("-1:never, 0:50/50, 1:always")]
         [DefaultValue(0)]
@@ -110,15 +124,29 @@ namespace WorldTwists {
             set { HipsterSpawnSkew = (sbyte)value; }
         }
         internal sbyte HipsterSpawnSkew = 0;
+
         [Label("Flipped World")]
         [DefaultValue(false)]
         public bool Flipped { get; set; } = false;
+
         [Label("Hardmode Start")]
         [DefaultValue(false)]
         public bool AlreadyHM { get; set; } = false;
+
         [Label("Hardmode Start Spawns WoF loot")]
         [DefaultValue(false)]
         public bool HMPyramid { get; set; } = false;
+
+        [Label("Minefield")]
+        [DefaultValue(0)]
+        [Tooltip("Density of landmines")]
+        [Range(0, 1)]
+        public float MinefieldDensity {
+            get => Minefield;
+            set { Minefield = value; }
+        }
+        internal float Minefield = 0;
+
 
         [Header("Universal")]
 
@@ -161,6 +189,7 @@ namespace WorldTwists {
             if(TwistConfig.Instance.Shuffled) tasks.Add(new PassLegacy("Shuffle", ShuffledBlocks));
             else if(TwistConfig.Instance.Inverted) tasks.Add(new PassLegacy("Rarity Invert", Invert));
             else if(TwistConfig.Instance.Randomize) tasks.Add(new PassLegacy("Randomize", RandomizedBlocks));
+            else if(TwistConfig.Instance.Shear!=0) tasks.Add(new PassLegacy("Shear", Shear(TwistConfig.Instance.Shear)));
             if(TwistConfig.Instance.LiquidCycle!=0) {
                 int genIndex = tasks.FindIndex(genpass => genpass.Name.Equals("Settle Liquids Again"));
                 tasks.Insert(genIndex, new PassLegacy("Cycle Liquids", LiquidCycle));
@@ -175,6 +204,9 @@ namespace WorldTwists {
             if(TwistConfig.Instance.AlreadyHM) {
                 if(!TwistConfig.Instance.HMPyramid)tasks.Add(new PassLegacy("Starting Hardmode", (p)=>WorldGen.StartHardmode()));
                 else tasks.Add(new PassLegacy("Starting Hardmode and Placing loot", HMLooter));
+            }
+            if(TwistConfig.Instance.Minefield>0) {
+                tasks.Add(new PassLegacy("Placing Landmines", Minefield));
             }
         }
         public static void LiquidCycle(GenerationProgress progress) {
@@ -208,7 +240,7 @@ namespace WorldTwists {
                 for(int x = 0; x < Main.maxTilesX; x++) {
                     tile = Main.tile[x, y];
                     if(!types.Contains(tile.type)) types.Add(tile.type);
-                    if(!TwistExt.solid(tile.type)&&!invalidTypes.Contains(tile.type)) invalidTypes.Add(tile.type);
+                    if(!TwistExt.Solid(tile.type)&&!invalidTypes.Contains(tile.type)) invalidTypes.Add(tile.type);
                 }
             }
             for(int i = 0; i < types.Count; i++) {
@@ -252,7 +284,7 @@ namespace WorldTwists {
             for(int y = 0; y < Main.maxTilesY; y++) {
                 for(int x = 0; x < Main.maxTilesX; x++) {
                     try {
-                        if(Main.tile[x, y].active()&&TwistExt.solid(Main.tile[x, y].type))
+                        if(Main.tile[x, y].active()&&TwistExt.Solid(Main.tile[x, y].type))
                             Main.tile[x, y].type = pairings[Main.tile[x, y].type];
                         if(Main.tileCut[Main.tile[x, y].type]&&Main.tile[x, y].type!=TileID.Pots&&Main.tile[x, y].type!=TileID.JunglePlants&&Main.tile[x, y].type!=TileID.Larva)
                             Main.tile[x, y].active(false);
@@ -285,7 +317,7 @@ namespace WorldTwists {
                 for(int x = 0; x < Main.maxTilesX; x++) {
                     tile = Main.tile[x, y];
                     if(!types.Contains(tile.type)) types.Add(tile.type);
-                    if(!TwistExt.solid(tile.type)&&!invalidTypes.Contains(tile.type)) invalidTypes.Add(tile.type);
+                    if(!TwistExt.Solid(tile.type)&&!invalidTypes.Contains(tile.type)) invalidTypes.Add(tile.type);
                 }
             }
             for(int i = 0; i < types.Count; i++) {
@@ -351,7 +383,7 @@ namespace WorldTwists {
             for(int y = 0; y < Main.maxTilesY; y++) {
                 for(int x = 0; x < Main.maxTilesX; x++) {
                     tile = Main.tile[x, y];
-                    if(!TwistExt.solid(tile.type)) {
+                    if(!TwistExt.Solid(tile.type)) {
                         if(!invalidTypes.Contains(tile.type)) invalidTypes.Add(tile.type);
                         continue;
                     }
@@ -384,7 +416,7 @@ namespace WorldTwists {
             for(int y = 0; y < Main.maxTilesY; y++) {
                 for(int x = 0; x < Main.maxTilesX; x++) {
                     try {
-                        if(Main.tile[x, y].active()&&TwistExt.solid(Main.tile[x, y].type))
+                        if(Main.tile[x, y].active()&&TwistExt.Solid(Main.tile[x, y].type))
                             Main.tile[x, y].type = pairings[Main.tile[x, y].type];
                         if(Main.tileCut[Main.tile[x, y].type])
                             Main.tile[x, y].active(false);
@@ -541,7 +573,7 @@ namespace WorldTwists {
 	            }
             }
             if(npci<201) {
-                Main.npc[npci].position.Y = Main.spawnTileY;
+                Main.npc[npci].position.Y = Main.spawnTileY*16;
             }
         }
         public static void HMLooter(GenerationProgress progress) {
@@ -625,6 +657,84 @@ namespace WorldTwists {
                 }
             }
         }
+        public static void Minefield(GenerationProgress progress) {
+            progress.Message = "Placing Landmines";
+            Tile tile;
+            Tile tileBelow;
+            float dord = TwistConfig.Instance.Minefield;
+            for(int y = 0; y < Main.maxTilesY-1; y++) {
+                for(int x = 0; x < Main.maxTilesX; x++) {
+                    tile = Main.tile[x, y];
+                    tileBelow = Main.tile[x, y + 1];
+                    if(!tile.active() && tileBelow.active() && tileBelow.slope() == 0 && !tileBelow.halfBrick() && Main.tileSolid[tileBelow.type] && (dord==1||WorldGen.genRand.NextFloat()<dord)) {
+                        tile.ResetToType(TileID.LandMine);
+                        //tile.type = TileID.LandMine;
+                        tile.color(TwistExt.GetMineColor(tileBelow.type));
+                        tile.active(true);
+                    }
+                }
+            }
+        }
+        public static WorldGenLegacyMethod Shear(int mult) => (GenerationProgress progress) => {
+            progress.Message = "Shearing";
+            int oobtiles = Main.offLimitBorderTiles;
+            int width = Main.maxTilesX;
+            int height = Main.maxTilesY;
+            int x = -1;
+            Tile[,] tiles = new Tile[Main.tile.GetLength(0), Main.tile.GetLength(1)];
+            for(int y1 = oobtiles; y1 < height-oobtiles; y1++) {
+                for(int x1 = oobtiles; x1 < width-oobtiles; x1++) {
+                    //x = (x1 + (y1 * mult)+(width-oobtiles*3)) % (width-oobtiles*2)+oobtiles;
+                    x = x1 + (y1 * mult);
+                    while(x < 0)x += (width - oobtiles * 2);
+                    x = x % (width - oobtiles * 2) + oobtiles;
+                    tiles[x, y1] = Main.tile[x1, y1];
+                }
+            }
+            for(int y2 = 0; y2 < height; y2++) {
+                for(int x2 = 0; x2 < width; x2++) {
+                    if(!(tiles[x2, y2] is null))Main.tile[x2, y2] = tiles[x2, y2];
+                }
+            }
+            Chest c;
+            Tile chestTile;
+            //Tile[,] chestTiles = new Tile[3,3];
+            for(int i = 0; i < Main.chest.Length; i++) {
+                c = Main.chest[i];
+                if(c is null) {
+                    continue;
+                }
+                c.x = (c.x + (c.y * mult));
+                while(c.x < 0)c.x += (width - oobtiles * 2);
+                c.x = c.x % (width - oobtiles * 2) + oobtiles;
+                chestTile = Main.tile[c.x, c.y];
+                c.y--;
+                try {
+                    MultiTileUtils.AggressivelyPlace(new Point(c.x, c.y), chestTile.type, chestTile.frameX / MultiTileUtils.GetStyleWidth(chestTile.type));
+                } catch(Exception e) {
+                    WorldTwists.Instance.Logger.Warn(e);
+                    Exception _ = e;
+                }
+            }
+            //Point spawnPoint = new Point(Main.spawnTileX, Main.spawnTileY);
+            Main.spawnTileX = (Main.spawnTileX + (Main.spawnTileY * mult)) % Main.maxTilesX;
+            //Point dungeonPoint = new Point(Main.spawnTileX, Main.spawnTileY);
+            Main.dungeonX = (Main.dungeonX + (Main.dungeonY * mult)) % Main.maxTilesX;
+
+            int npci;
+            for(npci = 0; npci < Main.npc.Length; npci++) {
+                if(Main.npc[npci].type == NPCID.OldMan) {
+                    Main.npc[npci].position = new Vector2(Main.dungeonX, Main.dungeonY) * 16;
+                    break;
+                }
+            }
+            for(npci = 0; npci < Main.npc.Length; npci++) {
+                if(Main.npc[npci].type == NPCID.Guide) {
+                    Main.npc[npci].position = new Vector2(Main.spawnTileX, Main.spawnTileY) * 16;
+                    break;
+                }
+            }
+        };
         public bool _smol = false;
         public static bool smol {
             get => ModContent.GetInstance<TwistWorld>()._smol;
@@ -633,7 +743,7 @@ namespace WorldTwists {
         private Dictionary<ushort, ushort> _pairings;
         public static Dictionary<ushort, ushort> pairings {
             get => ModContent.GetInstance<TwistWorld>()._pairings;
-            set => ModContent.GetInstance<TwistWorld>()._pairings = value;
+            set { if(!(value is null)) ModContent.GetInstance<TwistWorld>()._pairings = value; }
         }
         public override TagCompound Save() {
             TagCompound tag = new TagCompound();
@@ -693,8 +803,151 @@ namespace WorldTwists {
                 list[n] = value;
             }
         }
-        public static bool solid(int type) {
+        public static bool Solid(int type) {
             return Main.tileSolid[type]&&(TwistConfig.Instance.RandomizePlatforms||!Main.tileSolidTop[type]);
+        }
+        public static byte GetMineColor(ushort tileType, UnifiedRandom random = null) {
+            if(random is null)random = Main.rand;
+            switch(tileType) {
+
+                case TileID.Gold:
+                case TileID.HoneyBlock:
+                return PaintID.DeepYellow;
+
+                case TileID.SandStoneSlab:
+                case TileID.SandstoneBrick:
+                case TileID.Sand:
+                return PaintID.Yellow;
+
+                case TileID.Palladium:
+                case TileID.PalladiumColumn:
+                case TileID.Copper:
+                case TileID.LihzahrdBrick:
+                case TileID.DynastyWood:
+                case TileID.PumpkinBlock:
+                case TileID.CrispyHoneyBlock:
+                case TileID.Hive:
+                case TileID.Sandstone:
+                return PaintID.Orange;
+
+                case TileID.FleshBlock:
+                case TileID.FleshIce:
+                case TileID.Crimstone:
+                case TileID.Adamantite:
+                case TileID.AdamantiteBeam:
+                case TileID.RedDynastyShingles:
+                case TileID.HellstoneBrick:
+                return PaintID.Red;
+
+                case TileID.Obsidian:
+                case TileID.DemoniteBrick:
+                case TileID.SpookyWood:
+                case TileID.Ebonwood:
+                case TileID.Ebonsand:
+                case TileID.CorruptHardenedSand:
+                case TileID.CorruptSandstone:
+                case TileID.CorruptIce:
+                case TileID.Ebonstone:
+                return PaintID.Purple;
+
+                case TileID.PlatinumBrick:
+                case TileID.Silver:
+                case TileID.MarbleBlock:
+                case TileID.Marble:
+                case TileID.Pearlsand:
+                case TileID.Cloud:
+                case TileID.SnowBrick:
+                case TileID.SnowBlock:
+                return PaintID.White;
+
+                case TileID.Cobalt:
+                case TileID.CobaltBrick:
+                case TileID.BlueDynastyShingles:
+                case TileID.EbonstoneBrick:
+                case TileID.IceBrick:
+                case TileID.IceBlock:
+                case TileID.BreakableIce:
+                return PaintID.SkyBlue;
+
+                case TileID.Tin:
+                case TileID.Iron:
+                case TileID.LivingWood:
+                case TileID.PalmWood:
+                case TileID.Pearlwood:
+                case TileID.BoneBlock:
+                case TileID.DesertFossil:
+                case TileID.FossilOre:
+                return PaintID.Brown;
+
+                case TileID.PinkDungeonBrick:
+                case TileID.RichMahogany:
+                case TileID.LivingMahogany:
+                return PaintID.Pink;
+
+                case TileID.Orichalcum:
+                case TileID.BubblegumBlock:
+                case TileID.HallowSandstone:
+                case TileID.HallowHardenedSand:
+                case TileID.HallowedIce:
+                return PaintID.Violet;
+
+                case TileID.Chlorophyte:
+                case TileID.ChlorophyteBrick:
+                case TileID.LivingMahoganyLeaves:
+                case TileID.JungleGrass:
+                return PaintID.Lime;
+
+                case TileID.LeafBlock:
+                return PaintID.Green;
+
+                case TileID.Tungsten:
+                case TileID.Cactus:
+                return PaintID.DeepSkyBlue;
+
+                case TileID.Granite:
+                case TileID.GraniteBlock:
+                case TileID.MushroomBlock:
+                case TileID.MushroomGrass:
+                return PaintID.Blue;
+
+                case TileID.ShroomitePlating:
+                return PaintID.DeepBlue;
+
+                case TileID.Titanstone:
+                case TileID.Lead:
+                case TileID.Asphalt:
+                case TileID.ObsidianBrick:
+                return PaintID.Black;
+
+                case TileID.Mythril:
+                case TileID.MythrilBrick:
+                return PaintID.DeepTeal;
+
+                case TileID.Crimsand:
+                case TileID.CrimsonHardenedSand:
+                case TileID.CrimsonSandstone:
+                case TileID.CrimtaneBrick:
+                case TileID.Crimtane:
+                return random.NextBool()?PaintID.Red:PaintID.Black;
+
+                case TileID.FleshGrass:
+                return random.NextBool()?PaintID.Red:PaintID.Gray;
+
+                case TileID.CorruptGrass:
+                return random.NextBool()?PaintID.Red:PaintID.Gray;
+
+                case TileID.HallowedGrass:
+                return random.NextBool()?PaintID.SkyBlue:PaintID.Gray;
+
+                case TileID.GreenDungeonBrick:
+                return random.NextBool()?PaintID.DeepSkyBlue:PaintID.Gray;;
+
+                case TileID.BorealWood:
+                case TileID.WoodenBeam:
+                case TileID.WoodBlock:
+                default:
+                return PaintID.Gray;
+            }
         }
     }
 }
