@@ -1,4 +1,6 @@
 using Microsoft.Xna.Framework;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Converters;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -147,6 +149,16 @@ namespace WorldTwists {
         }
         internal float Minefield = 0;
 
+        [Label("Paint It,")]
+        [Tooltip("Color of paint")]
+		[DrawTicks]
+        [JsonConverter(typeof(StringEnumConverter))]
+        public PaintEnum PaintIt {
+            get => Paint;
+            set { Paint = value; }
+        }
+        internal PaintEnum Paint = 0;
+
 
         [Header("Universal")]
 
@@ -207,6 +219,9 @@ namespace WorldTwists {
             }
             if(TwistConfig.Instance.Minefield>0) {
                 tasks.Add(new PassLegacy("Placing Landmines", Minefield));
+            }
+            if(TwistConfig.Instance.Paint>0) {
+                tasks.Add(new PassLegacy("Painting it,", Painter));
             }
         }
         public static void LiquidCycle(GenerationProgress progress) {
@@ -675,6 +690,18 @@ namespace WorldTwists {
                 }
             }
         }
+        public static void Painter(GenerationProgress progress) {
+            progress.Message = "Painting it,";
+            Tile tile;
+            byte color = (byte)TwistConfig.Instance.Paint;
+            for(int y = 0; y < Main.maxTilesY-1; y++) {
+                for(int x = 0; x < Main.maxTilesX; x++) {
+                    tile = Main.tile[x, y];
+                    tile.color(color);
+                    tile.wallColor(color);
+                }
+            }
+        }
         public static WorldGenLegacyMethod Shear(int mult) => (GenerationProgress progress) => {
             progress.Message = "Shearing";
             int oobtiles = Main.offLimitBorderTiles;
@@ -949,5 +976,38 @@ namespace WorldTwists {
                 return PaintID.Gray;
             }
         }
+    }
+    public enum PaintEnum {
+        None = 0,
+        Red = 1,
+        Orange = 2,
+        Yellow = 3,
+        Lime = 4,
+        Green = 5,
+        Teal = 6,
+        Cyan = 7,
+        SkyBlue = 8,
+        Blue = 9,
+        Purple = 10,
+        Violet = 11,
+        Pink = 12,
+        DeepRed = 13,
+        DeepOrange = 14,
+        DeepYellow = 15,
+        DeepLime = 16,
+        DeepGreen = 17,
+        DeepTeal = 18,
+        DeepCyan = 19,
+        DeepSkyBlue = 20,
+        DeepBlue = 21,
+        DeepPurple = 22,
+        DeepViolet = 23,
+        DeepPink = 24,
+        Black = 25,
+        White = 26,
+        Gray = 27,
+        Brown = 28,
+        Shadow = 29,
+        Negative = 30,
     }
 }
