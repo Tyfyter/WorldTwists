@@ -1,9 +1,12 @@
 using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.ComponentModel;
+//using System.Diagnostics;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
@@ -13,8 +16,10 @@ using Terraria.GameContent.Generation;
 using Terraria.ID;
 using Terraria.ModLoader;
 using Terraria.ModLoader.Config;
+using Terraria.ModLoader.Config.UI;
 using Terraria.ModLoader.Default;
 using Terraria.ModLoader.IO;
+using Terraria.UI;
 using Terraria.Utilities;
 using Terraria.World.Generation;
 using Tyfyter.Utils;
@@ -40,6 +45,7 @@ namespace WorldTwists {
     public class TwistConfig : ModConfig {
         public static TwistConfig Instance;
         public override ConfigScope Mode => ConfigScope.ServerSide;
+        #region randomization
         [Header("Shuffled")]
 
         [Label("Shuffled Blocks")]
@@ -83,7 +89,7 @@ namespace WorldTwists {
             0,0,0,0,0,0,0,0,0,0,
             0,0,0,0,0,0,0,0,0,0,
             0,0,0,0,0,0})]*/
-
+        #endregion
 
         [Header("Rarity Invert")]
 
@@ -100,6 +106,34 @@ namespace WorldTwists {
         public int Shear = 0;
 
 
+        [Header("Remapper")]
+
+		[Label("Tile Map")]
+        public List<string> TileMapsStr {
+            get {
+                return TileMaps.Select((m)=>m.ToString()).ToList();
+            }
+            set {
+                TileMaps = value.Select((m)=>TypeMap.FromString(m,TileParser)).ToArray();
+            }
+        }
+		internal TypeMap[] TileMaps = new TypeMap[0];
+        public int TileParser(string value) => int.TryParse(value, out int v) ? v : TileID.Search.GetId(value);
+
+		[Label("Wall Map")]
+        public List<string> WallMapsStr {
+            get {
+                return WallMaps.Select((m)=>m.ToString()).ToList();
+            }
+            set {
+                WallMaps = value.Select((m)=>TypeMap.FromString(m,WallParser)).ToArray();
+            }
+        }
+		internal TypeMap[] WallMaps = new TypeMap[0];
+        public int WallParser(string value) => int.TryParse(value, out int v) ? v : WallID.Search.GetId(value);
+
+
+        #region other
         [Header("Other Changes")]
 
         [Label("Liquid Cycling")]
@@ -112,6 +146,7 @@ namespace WorldTwists {
         }
         internal sbyte LiquidCycle = 0;
 
+        #region mini worlds
         [Label("Mini Worlds")]
         [DefaultValue(false)]
         [Tooltip("Note the plural")]
@@ -126,6 +161,7 @@ namespace WorldTwists {
             set { HipsterSpawnSkew = (sbyte)value; }
         }
         internal sbyte HipsterSpawnSkew = 0;
+        #endregion
 
         [Label("Flipped World")]
         [DefaultValue(false)]
@@ -158,8 +194,9 @@ namespace WorldTwists {
             set { Paint = value; }
         }
         internal PaintEnum Paint = 0;
+        #endregion
 
-
+        #region universal
         [Header("Universal")]
 
         [Label("Janky Door Loot")]
@@ -194,6 +231,7 @@ namespace WorldTwists {
             }
         }
         internal List<int> SeedArray = new List<int>(56);
+        #endregion
     }
     public class TwistWorld : ModWorld {
         public override void ModifyWorldGenTasks(List<GenPass> tasks, ref float totalWeight) {
@@ -219,6 +257,9 @@ namespace WorldTwists {
             }
             if(TwistConfig.Instance.Minefield>0) {
                 tasks.Add(new PassLegacy("Placing Landmines", Minefield));
+            }
+            if(TwistConfig.Instance.TileMaps.Length>0||TwistConfig.Instance.WallMaps.Length>0) {
+                tasks.Add(new PassLegacy("Switcheroo", Switcher));
             }
             if(TwistConfig.Instance.Paint>0) {
                 tasks.Add(new PassLegacy("Painting it,", Painter));
@@ -702,6 +743,21 @@ namespace WorldTwists {
                 }
             }
         }
+        public static void Switcher(GenerationProgress progress) {
+            progress.Message = "Switcheroo";
+            Tile tile;
+            var watch = new System.Diagnostics.Stopwatch();
+            watch.Start();
+            for(int y = 0; y < Main.maxTilesY-1; y++) {
+                for(int x = 0; x < Main.maxTilesX; x++) {
+                    tile = Main.tile[x, y];
+                    Switch(tile);
+                    //if(Switch(tile))WorldGen.SquareTileFrame(x,y);
+                }
+            }
+            watch.Stop();
+            WorldTwists.Instance.Logger.Info("Switched tiles in"+watch.Elapsed);
+        }
         public static WorldGenLegacyMethod Shear(int mult) => (GenerationProgress progress) => {
             progress.Message = "Shearing";
             int oobtiles = Main.offLimitBorderTiles;
@@ -772,6 +828,41 @@ namespace WorldTwists {
             get => ModContent.GetInstance<TwistWorld>()._pairings;
             set { if(!(value is null)) ModContent.GetInstance<TwistWorld>()._pairings = value; }
         }
+
+        public static bool Switch(Tile tile) {
+            TypeMap[] maps = TwistConfig.Instance.TileMaps;
+            TypeMap current;
+            int temp = tile.active()?tile.type:-1;
+            bool reframe = false;
+            if(temp==-1) {
+                tile.active(true);
+            }
+            for(int i = 0; i < maps.Length; i++) {
+                current = maps[i];
+                if(current.input.Contains(temp)!=current.inverted) {
+                    temp = current.output;
+                    if(temp!=-1) {
+                        tile.type = (ushort)temp;
+                        reframe = true;
+                    }
+                    break;
+                }
+            }
+            if(temp==-1) {
+                tile.active(false);
+            }
+
+            maps = TwistConfig.Instance.WallMaps;
+            for(int i = 0; i < maps.Length; i++) {
+                current = maps[i];
+                if(current.input.Contains(tile.wall)!=current.inverted) {
+                    tile.wall = (ushort)current.output;
+                    break;
+                }
+            }
+            return reframe;
+        }
+
         public override TagCompound Save() {
             TagCompound tag = new TagCompound();
             try {
@@ -811,6 +902,8 @@ namespace WorldTwists {
         private void addTilePairing(ref int count, ushort id, int[] tileCounts) {
             if(pairings.ContainsKey(id)) count+=tileCounts[pairings[id]];
         }
+
+
         private bool oldDayTime;
         public override void PostUpdate() {
             if(smol&&Main.dayTime!=oldDayTime&&!NPC.downedBoss3&&NPC.CountNPCS(NPCID.OldMan)<1) {
@@ -1010,4 +1103,80 @@ namespace WorldTwists {
         Shadow = 29,
         Negative = 30,
     }
+	[BackgroundColor(99, 111, 153)]
+    public class TypeMap {
+        public int[] input;
+        public int output;
+        public bool inverted;
+        public TypeMap(ICollection<int> input, int output, bool inverted) : this(input.ToArray(), output, inverted) {}
+        public TypeMap(int[] input, int output, bool inverted) {
+            this.input = input;
+            this.output = output;
+            this.inverted = inverted;
+        }
+		public override bool Equals(object obj) {
+			if (obj is TypeMap other)
+				return inverted == other.inverted && output == other.output && input.ToArray().deepCompare(other.input.ToArray());
+			return base.Equals(obj);
+		}
+		public override int GetHashCode() {
+			return new { input = ((IStructuralEquatable)this.input).GetHashCode(EqualityComparer<int>.Default), output, inverted }.GetHashCode();
+		}
+        public static TypeMap FromString(string value) {
+            try {
+                bool inverted = value.StartsWith("!");
+                string[] sections = value.Split(new string[] { "->" }, StringSplitOptions.RemoveEmptyEntries);
+                return new TypeMap(sections[0].Split(',').Select(int.Parse).ToArray(), int.Parse(sections[1]), inverted);
+            } catch(Exception e) {
+                throw new InvalidFormatException($"\"value\" was not formatted correctly", e);
+            }
+        }
+        public static TypeMap FromString(string value, Func<string,int> parser) {
+            try {
+                bool inverted = value.StartsWith("!");
+                string[] sections = value.Split(new string[] { "->" }, StringSplitOptions.RemoveEmptyEntries);
+                return new TypeMap(sections[0].Split(',').Select(parser).ToArray(), parser(sections[1]), inverted);
+            } catch(Exception e) {
+                throw new InvalidFormatException($"\"value\" was not formatted correctly", e);
+            }
+        }
+        public override string ToString() {
+            return (inverted?"not ":"")+$"{string.Join(",",input)}->{output}";
+        }
+    }
+    [Serializable]
+    public class InvalidFormatException : Exception {
+        public InvalidFormatException() { }
+        public InvalidFormatException(string message) : base(message) { }
+        public InvalidFormatException(string message, Exception inner) : base(message, inner) { }
+        protected InvalidFormatException(
+            System.Runtime.Serialization.SerializationInfo info,
+            System.Runtime.Serialization.StreamingContext context) : base(info, context) { }
+    }
+    /*class TypeMapElement : ConfigElement {
+		string[] valueStrings;
+
+		public override void OnBind() {
+			base.OnBind();
+
+		}
+
+		void SetValue(TypeMap value) => SetObject(value);
+
+		TypeMap GetValue() => (TypeMap)GetObject();
+
+		string GetStringValue() {
+			return GetValue().ToString();
+		}
+
+		public override void Draw(SpriteBatch spriteBatch) {
+			base.Draw(spriteBatch);
+			CalculatedStyle dimensions = base.GetDimensions();
+			Rectangle circleSourceRectangle = new Rectangle(0, 0, (circleTexture.Width - 2) / 2, circleTexture.Height);
+			spriteBatch.Draw(Main.magicPixel, new Rectangle((int)(dimensions.X + dimensions.Width - 25), (int)(dimensions.Y + 4), 22, 22), Color.LightGreen);
+			Corner corner = GetValue();
+			Vector2 circlePositionOffset = new Vector2((int)corner % 2 * 8, (int)corner / 2 * 8);
+			spriteBatch.Draw(circleTexture, new Vector2(dimensions.X + dimensions.Width - 25, dimensions.Y + 4) + circlePositionOffset, circleSourceRectangle, Color.White);
+		}
+	}*/
 }

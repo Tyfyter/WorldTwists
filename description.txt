@@ -1,4 +1,4 @@
 World Twists lets you automatically do some of those things youtubers have been using TEdit to do for videos, along with a few other things
 
-Block randomization was inspired by Wand of Sparking's series, but randomizers have been around for a while
+If Wand of Sparking did a video on a very specific or time-consuming way to do something in this mod that's probably where I got the idea
 Block rarity inversion was seemingly beaverrac's idea (the first video is at https://youtu.be/WX5EMprE6m8)
