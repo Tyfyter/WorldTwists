@@ -82,7 +82,7 @@ namespace WorldTwists {
         [DefaultValue(false)]
         public bool Randomize = false;
         //internal int[] SeedArray = new int[56];
-        /*[DefaultValue(new int[56]{
+        /*[DefaultValue(new int[56] {
             0,0,0,0,0,0,0,0,0,0,
             0,0,0,0,0,0,0,0,0,0,
             0,0,0,0,0,0,0,0,0,0,
@@ -108,27 +108,14 @@ namespace WorldTwists {
 
         [Header("Remapper")]
 
-		[Label("Tile Map")]
-        public List<string> TileMapsStr {
-            get {
-                return TileMaps.Select((m)=>m.ToString()).ToList();
-            }
-            set {
-                TileMaps = value.Select((m)=>TypeMap.FromString(m,TileParser)).ToArray();
-            }
-        }
+        [Label("Tile Map")]
+        [Tooltip("Formatted as (!)input->output, example:!-1,8,Stone->Dirt would turn everything other than air, gold, and stone into dirt")]
+        public List<string> TileMapsStr { get; set; } = new List<string> {};
 		internal TypeMap[] TileMaps = new TypeMap[0];
         public int TileParser(string value) => int.TryParse(value, out int v) ? v : TileID.Search.GetId(value);
 
-		[Label("Wall Map")]
-        public List<string> WallMapsStr {
-            get {
-                return WallMaps.Select((m)=>m.ToString()).ToList();
-            }
-            set {
-                WallMaps = value.Select((m)=>TypeMap.FromString(m,WallParser)).ToArray();
-            }
-        }
+        [Label("Wall Map")]
+        public List<string> WallMapsStr { get; set; } = new List<string> { };
 		internal TypeMap[] WallMaps = new TypeMap[0];
         public int WallParser(string value) => int.TryParse(value, out int v) ? v : WallID.Search.GetId(value);
 
@@ -194,6 +181,10 @@ namespace WorldTwists {
             set { Paint = value; }
         }
         internal PaintEnum Paint = 0;
+
+        [Label("Solidify Trees")]
+        [DefaultValue(false)]
+        public bool TreeSolidification { get; set; } = false;
         #endregion
 
         #region universal
@@ -232,38 +223,40 @@ namespace WorldTwists {
         }
         internal List<int> SeedArray = new List<int>(56);
         #endregion
+
+        public override void OnChanged() {
+            TileMaps = TileMapsStr.Select((m)=>TypeMap.FromString(m,TileParser)).ToArray();
+            WallMaps = WallMapsStr.Select((m)=>TypeMap.FromString(m,WallParser)).ToArray();
+        }
     }
     public class TwistWorld : ModWorld {
         public override void ModifyWorldGenTasks(List<GenPass> tasks, ref float totalWeight) {
-
+            if(TwistConfig.Instance.AlreadyHM) {
+                if(!TwistConfig.Instance.HMPyramid) tasks.Add(new PassLegacy("Starting Hardmode", (p) => WorldGen.StartHardmode()));
+                else tasks.Add(new PassLegacy("Starting Hardmode and Placing loot", HMLooter));
+            }
             if(TwistConfig.Instance.Shuffled) tasks.Add(new PassLegacy("Shuffle", ShuffledBlocks));
             else if(TwistConfig.Instance.Inverted) tasks.Add(new PassLegacy("Rarity Invert", Invert));
             else if(TwistConfig.Instance.Randomize) tasks.Add(new PassLegacy("Randomize", RandomizedBlocks));
-            else if(TwistConfig.Instance.Shear!=0) tasks.Add(new PassLegacy("Shear", Shear(TwistConfig.Instance.Shear)));
-            if(TwistConfig.Instance.LiquidCycle!=0) {
+            if(TwistConfig.Instance.LiquidCycle != 0) {
                 int genIndex = tasks.FindIndex(genpass => genpass.Name.Equals("Settle Liquids Again"));
                 tasks.Insert(genIndex, new PassLegacy("Cycle Liquids", LiquidCycle));
             }
+            if(TwistConfig.Instance.TreeSolidification)
+                tasks.Add(new PassLegacy("Solidifying Trees", TreeSolidifier));
             if(TwistConfig.Instance.Flipped) {
                 tasks.Add(new PassLegacy("Flipping World", Flipper));
                 tasks.Add(tasks[tasks.FindIndex(genpass => genpass.Name.Equals("Settle Liquids Again"))]);
             }
-            if(TwistConfig.Instance.GreatEnsmallening) {
+            if(TwistConfig.Instance.GreatEnsmallening)
                 tasks.Add(new PassLegacy("Mini Worlds", GreatEnsmallener));
-            }
-            if(TwistConfig.Instance.AlreadyHM) {
-                if(!TwistConfig.Instance.HMPyramid)tasks.Add(new PassLegacy("Starting Hardmode", (p)=>WorldGen.StartHardmode()));
-                else tasks.Add(new PassLegacy("Starting Hardmode and Placing loot", HMLooter));
-            }
-            if(TwistConfig.Instance.Minefield>0) {
+            if(TwistConfig.Instance.Shear!=0) tasks.Add(new PassLegacy("Shear", Shear(TwistConfig.Instance.Shear)));
+            if(TwistConfig.Instance.Minefield>0)
                 tasks.Add(new PassLegacy("Placing Landmines", Minefield));
-            }
-            if(TwistConfig.Instance.TileMaps.Length>0||TwistConfig.Instance.WallMaps.Length>0) {
+            if(TwistConfig.Instance.TileMaps.Length>0||TwistConfig.Instance.WallMaps.Length>0)
                 tasks.Add(new PassLegacy("Switcheroo", Switcher));
-            }
-            if(TwistConfig.Instance.Paint>0) {
+            if(TwistConfig.Instance.Paint>0)
                 tasks.Add(new PassLegacy("Painting it,", Painter));
-            }
         }
         public static void LiquidCycle(GenerationProgress progress) {
             Tile tile;
@@ -309,7 +302,7 @@ namespace WorldTwists {
             //WorldTwists.Instance.Logger.Info("Randomize: Shuffled "+WorldGen.genRand.);
             bool UseWorldSeed = TwistConfig.Instance.UseWorldSeed;
             bool UseComplexSeed = TwistConfig.Instance.UseComplexSeed;
-            WorldTwists.Instance.Logger.Info($"Shuffle: Using settings UseWorldSeed:{UseWorldSeed}; UseComplexSeed:{UseComplexSeed}");
+            WorldTwists.Instance.Logger.Info($"Shuffle: Using settings UseWorldSeed: {UseWorldSeed}; UseComplexSeed: {UseComplexSeed}");
             if(UseWorldSeed) {
                 if(UseComplexSeed) {
                     WorldTwists.Instance.Logger.Info("Shuffle: inext "+typeof(UnifiedRandom).GetField("inext", BindingFlags.NonPublic|BindingFlags.Instance).GetValue(WorldGen.genRand));
@@ -330,7 +323,7 @@ namespace WorldTwists {
             string log = "";
             for(int i = 0; i < types.Count; i++) {
                 pairings.Add(types[i], shuffledTypes[i]);
-                log+=$"[{types[i]} ({getTileName(types[i])}),{shuffledTypes[i]} ({getTileName(shuffledTypes[i])})] ";
+                log+=$"[ {types[i]} ( {TwistExt.getTileName(types[i])}), {shuffledTypes[i]} ( {TwistExt.getTileName(shuffledTypes[i])})] ";
             }
             //TileID.Sets.Falling
             for(int i = 0; i < invalidTypes.Count; i++) {
@@ -385,7 +378,7 @@ namespace WorldTwists {
             //WorldTwists.Instance.Logger.Info("Randomize: Shuffled "+WorldGen.genRand.);
             bool UseWorldSeed = TwistConfig.Instance.UseWorldSeed;
             bool UseComplexSeed = TwistConfig.Instance.UseComplexSeed;
-            WorldTwists.Instance.Logger.Info($"Randomize: Using settings UseWorldSeed:{UseWorldSeed}; UseComplexSeed:{UseComplexSeed}");
+            WorldTwists.Instance.Logger.Info($"Randomize: Using settings UseWorldSeed: {UseWorldSeed}; UseComplexSeed: {UseComplexSeed}");
             UnifiedRandom rand;
             if(UseWorldSeed) {
                 rand = WorldGen.genRand;
@@ -416,9 +409,6 @@ namespace WorldTwists {
                     }
                 }
             }
-        }
-        static string getTileName(int type) {
-            return type<TileID.Count ? TileID.Search.GetName(type) : TileLoader.GetTile(type).Name;
         }
         public static void Invert(GenerationProgress progress) {
             WorldTwists.Instance.Logger.Info("Inverting Blocks");
@@ -463,7 +453,7 @@ namespace WorldTwists {
             string log = "";
             for(int i = 0; i < types.Count; i++) {
                 pairings.Add(listTypes[i].Key, listTypes[types.Count-i-1].Key);
-                log+=$"({listTypes[i]},{listTypes[types.Count-i-1]}) ";
+                log+=$"( {listTypes[i]}, {listTypes[types.Count-i-1]}) ";
             }
             for(int i = 0; i < invalidTypes.Count; i++) {
                 pairings.Add(invalidTypes[i], invalidTypes[i]);
@@ -533,16 +523,16 @@ namespace WorldTwists {
             Main.dungeonX = (Main.dungeonX / 2) + WorldGen.genRand.Next(2) * halfX;
             Main.dungeonY = (Main.dungeonY / 2);
             int npci;
-            for(npci = 0;npci<Main.npc.Length;npci++){
-	            if(Main.npc[npci].type==NPCID.OldMan){
+            for(npci = 0;npci<Main.npc.Length;npci++) {
+	            if(Main.npc[npci].type==NPCID.OldMan) {
 		            break;
 	            }
             }
             if(npci<201) {
                 Main.npc[npci].position = new Vector2(Main.dungeonX,Main.dungeonY)*16;
             }
-            for(npci = 0;npci<Main.npc.Length;npci++){
-	            if(Main.npc[npci].type==NPCID.Guide){
+            for(npci = 0;npci<Main.npc.Length;npci++) {
+	            if(Main.npc[npci].type==NPCID.Guide) {
 		            break;
 	            }
             }
@@ -615,16 +605,16 @@ namespace WorldTwists {
             //Main.dungeonX = (Main.dungeonX / 2) + WorldGen.genRand.Next(2) * halfX;
             //Main.dungeonY = (Main.dungeonY / 2);
             int npci;
-            for(npci = 0;npci<Main.npc.Length;npci++){
-	            if(Main.npc[npci].type==NPCID.OldMan){
+            for(npci = 0;npci<Main.npc.Length;npci++) {
+	            if(Main.npc[npci].type==NPCID.OldMan) {
 		            break;
 	            }
             }
             if(npci<201) {
                 Main.npc[npci].position = new Vector2(Main.dungeonX,Main.dungeonY)*16;
             }
-            for(npci = 0;npci<Main.npc.Length;npci++){
-	            if(Main.npc[npci].type==NPCID.Guide){
+            for(npci = 0;npci<Main.npc.Length;npci++) {
+	            if(Main.npc[npci].type==NPCID.Guide) {
 		            break;
 	            }
             }
@@ -661,26 +651,19 @@ namespace WorldTwists {
             int y = Main.maxTilesY - 150;
             ushort brickType = WorldGen.crimson ? TileID.CrimtaneBrick : TileID.DemoniteBrick;
             StructureUtils.Structure pyramid = new StructureUtils.Structure(
-            new string[]{
+            new string[] {
             "   _____l_c__l_____   ",
             "  ____qbbbbbbbbp____  ",
             " ___qbbbbbbbbbbbbp___ ",
             "__qbbbbbbbbbbbbbbbbp__",
             "qbbbbbbbbbbbbbbbbbbbbp"
             },
-            new Dictionary<char, StructureUtils.StructureTile>(){
-            {'b',new StructureUtils.StructureTile(brickType, ReplaceOld)},
-            {'q',new StructureUtils.StructureTile(brickType, ReplaceOld, SlopeID.BottomRight)},
-            {'p',new StructureUtils.StructureTile(brickType, ReplaceOld, SlopeID.BottomLeft)},
-            {'c',new StructureUtils.StructureTile(TileID.Containers, RequiredTile|MultiTile, 0, 44)},
-            {'l',new StructureUtils.StructureTile(TileID.Lamps, RequiredTile|MultiTile, 0, 23)},
-            {'_',new StructureUtils.StructureTile(0, OptionalTile|Deactivate)},
-            {' ',new StructureUtils.StructureTile(0, Nothing)}
+            new Dictionary<char, StructureUtils.StructureTile>() { {'b',new StructureUtils.StructureTile(brickType, ReplaceOld)}, {'q',new StructureUtils.StructureTile(brickType, ReplaceOld, SlopeID.BottomRight)}, {'p',new StructureUtils.StructureTile(brickType, ReplaceOld, SlopeID.BottomLeft)}, {'c',new StructureUtils.StructureTile(TileID.Containers, RequiredTile|MultiTile, 0, 44)}, {'l',new StructureUtils.StructureTile(TileID.Lamps, RequiredTile|MultiTile, 0, 23)}, {'_',new StructureUtils.StructureTile(0, OptionalTile|Deactivate)}, {' ',new StructureUtils.StructureTile(0, Nothing)}
             }
             );
             StructureUtils.Structure pillar = new StructureUtils.Structure(
-            new string[]{"bbbbbbbbbbbbbbbbbbbbbb"},
-            new Dictionary<char, StructureUtils.StructureTile>(){{'b',new StructureUtils.StructureTile(brickType, OptionalTile)}}
+            new string[] {"bbbbbbbbbbbbbbbbbbbbbb"},
+            new Dictionary<char, StructureUtils.StructureTile>() { {'b',new StructureUtils.StructureTile(brickType, OptionalTile)}}
             );
             int succ = 0;
             int xoff = 0;
@@ -709,7 +692,7 @@ namespace WorldTwists {
                     chest.item[i] = loot[i];
                 }
                 for(; i < loot.Length; i++) {
-                    addItem.Invoke(bag, new object[]{loot[i]});
+                    addItem.Invoke(bag, new object[] {loot[i]});
                 }
             }
         }
@@ -757,6 +740,38 @@ namespace WorldTwists {
             }
             watch.Stop();
             WorldTwists.Instance.Logger.Info("Switched tiles in"+watch.Elapsed);
+        }
+        public static void TreeSolidifier(GenerationProgress progress) {
+            progress.Message = "Solidifying Trees";
+            Tile tile;
+            int wood;
+            Item item = new Item();
+            StructureUtils.Structure strukt;
+            int fails = 0;
+            UnifiedRandom rand = WorldGen.genRand;
+            var watch = new System.Diagnostics.Stopwatch();
+            watch.Start();
+            for(int y = 0; y < Main.maxTilesY-1; y++) {
+                for(int x = 0; x < Main.maxTilesX; x++) {
+                    tile = Main.tile[x, y];
+                    if(!tile.active()||tile.type!=TileID.Trees)continue;
+                    wood = TwistExt.GetTreeWood(x,y);
+                    item.SetDefaults(wood);
+                    tile.type = (ushort)item.createTile;
+                    if(tile.IsTreeTop()) {
+                        strukt = TwistExt.GetTreetop(item.type, rand);
+                        if(strukt.Place(x-2,y-5,true)==0)
+                            ++fails;
+                    }else {
+                        //try {
+                        WorldGen.SquareTileFrame(x, y);
+                        //} catch(IndexOutOfRangeException) { }
+                    }
+                }
+            }
+            watch.Stop();
+
+            WorldTwists.Instance.Logger.Info($"Solidified trees in {watch.Elapsed} with {fails} failures");
         }
         public static WorldGenLegacyMethod Shear(int mult) => (GenerationProgress progress) => {
             progress.Message = "Shearing";
@@ -863,6 +878,7 @@ namespace WorldTwists {
             return reframe;
         }
 
+
         public override TagCompound Save() {
             TagCompound tag = new TagCompound();
             try {
@@ -923,8 +939,14 @@ namespace WorldTwists {
                 list[n] = value;
             }
         }
+        public static string NextString(this UnifiedRandom rand, params string[] options) {
+            return rand.Next(options);
+        }
         public static bool Solid(int type) {
             return Main.tileSolid[type]&&(TwistConfig.Instance.RandomizePlatforms||!Main.tileSolidTop[type]);
+        }
+        public static string getTileName(int type) {
+            return type<TileID.Count ? TileID.Search.GetName(type) : TileLoader.GetTile(type).Name;
         }
         public static byte GetMineColor(ushort tileType, UnifiedRandom random = null) {
             if(random is null)random = Main.rand;
@@ -1069,6 +1091,197 @@ namespace WorldTwists {
                 return PaintID.Gray;
             }
         }
+        public static bool IsTreeTop(this Tile tile) => tile.frameY >= 198 && tile.frameX >= 22;
+        public static int GetTreeWood(int i, int j) {
+            Tile tile = Framing.GetTileSafely(i, j);
+            int wood = ItemID.Wood;
+            int x = i;
+			int y = j;
+
+            #region repositioning
+            if(tile.frameX == 66 && tile.frameY <= 45) {
+				x++;
+			}
+			if (tile.frameX == 88 && tile.frameY >= 66 && tile.frameY <= 110) {
+				x--;
+			}
+			if (tile.frameX == 22 && tile.frameY >= 132 && tile.frameY <= 176) {
+				x--;
+			}
+			if (tile.frameX == 44 && tile.frameY >= 132 && tile.frameY <= 176) {
+				x++;
+			}
+			if (tile.frameX == 44 && tile.frameY >= 198) {
+				x++;
+			}
+			if (tile.frameX == 66 && tile.frameY >= 198) {
+				x--;
+			}
+            #endregion
+
+            for(; !Main.tile[x, y].active() || !Main.tileSolid[Main.tile[x, y].type]; y++);
+			if (Main.tile[x, y].active()) {
+				switch (Main.tile[x, y].type) {
+				    case TileID.CorruptGrass:
+				    wood = ItemID.Ebonwood;
+				    break;
+				    case TileID.JungleGrass:
+				    wood = ItemID.RichMahogany;
+				    break;
+				    case TileID.HallowedGrass:
+				    wood = ItemID.Pearlwood;
+				    break;
+				    case TileID.FleshGrass:
+				    wood = ItemID.Shadewood;
+				    break;
+				    case TileID.MushroomGrass:
+				    wood = ItemID.GlowingMushroom;
+				    break;
+				    case TileID.SnowBlock:
+				    wood = ItemID.BorealWood;
+				    break;
+				}
+				TileLoader.DropTreeWood(Main.tile[x, y].type, ref wood);
+			}
+            return wood;
+        }
+        public static StructureUtils.Structure GetTreetop(int drop, UnifiedRandom rand = null) {
+            if(rand is null)rand = Main.rand;
+
+            string[] map = new string[] {
+            "     ",
+            " aaa ",
+            "aaaaa",
+            "aaaaa",
+            "aalaa",
+            " ala "
+            };
+            byte paint = PaintID.DeepGreen;
+            switch(drop) {
+                case ItemID.Pearlwood:
+                return GetHallowedTreetop((byte)rand.Next(16));
+                case ItemID.RichMahogany:
+                paint = 0;
+                map = new string[] {
+                "     ",
+                "aaaaa",
+                "aaaaa",
+rand.NextString("aaaaa","alaaa","aaala","alala"),
+                " l l ",
+                " 1l2 "
+                };
+                break;
+                case ItemID.Ebonwood:
+                paint = PaintID.DeepPurple;
+                break;
+                case ItemID.Shadewood:
+                paint = PaintID.DeepRed;
+                map = new string[] {
+                "     ",
+                "aaaaa",
+                "aaaaa",
+                "  l  ",
+                "aaaaa",
+                "  l  "
+                };
+                break;
+                case ItemID.BorealWood:
+                int t = rand.Next(4);
+                map = new string[] {
+                "     ",
+                "     ",
+                "     ",
+                "     ",
+  new string[] {" l   " ,"   l " ," l l ","  l  "}[t],
+  new string[] {" 2l  " ,"  l2 " ," 1l2 ","  l  "}[t]
+                };
+                break;
+                case ItemID.GlowingMushroom:
+                map = new string[] {
+                "     ",
+                "     ",
+                "     ",
+                " lll ",
+                "lllll",
+                "lllll"
+                };
+                break;
+            }
+            Item i = new Item();
+            i.SetDefaults(drop);
+            return new StructureUtils.Structure(map,
+            ('a',new StructureUtils.StructureTile(TileID.LivingMahoganyLeaves, OptionalTile, paint:paint)),
+            ('l',new StructureUtils.StructureTile((ushort)i.createTile, OptionalTile)),
+            ('1',new StructureUtils.StructureTile((ushort)i.createTile, OptionalTile, SlopeID.TopRight)),
+            ('2',new StructureUtils.StructureTile((ushort)i.createTile, OptionalTile, SlopeID.TopLeft)),
+            (' ',new StructureUtils.StructureTile(0, Nothing))
+            );
+        }
+        public static StructureUtils.Structure GetHallowedTreetop(byte type) {
+            string[] map;
+            switch(type%4) {
+                case 0:
+                map = new string[] {
+                "  a  ",
+                " aaa ",
+                " aaa ",
+                "aaaaa",
+                "aaaaa",
+                "aalaa"
+                };
+                break;
+                case 1:
+                map = new string[] {
+                "     ",
+                "  a  ",
+                " aaa ",
+                " aaa ",
+                "aaaaa",
+                "aalaa"
+                };
+                break;
+                case 2:
+                map = new string[] {
+                "  a  ",
+                " aaa ",
+                " aaa ",
+                " aaa ",
+                " aaa ",
+                " ala "
+                };
+                break;
+                default:
+                map = new string[] {
+                "     ",
+                "     ",
+                "  a  ",
+                " aaa ",
+                "aaaaa",
+                "aalaa"
+                };
+                break;
+            }
+            byte paint;
+            switch(type/4) {
+                case 0:
+                paint = PaintID.DeepPink;
+                break;
+                case 1:
+                paint = PaintID.DeepViolet;
+                break;
+                case 2:
+                paint = PaintID.DeepSkyBlue;
+                break;
+                default:
+                paint = PaintID.DeepYellow;
+                break;
+            }
+            return new StructureUtils.Structure(map,
+            ('a',new StructureUtils.StructureTile(TileID.LivingMahoganyLeaves, OptionalTile, paint:paint)),
+            ('l',new StructureUtils.StructureTile(TileID.Pearlwood, OptionalTile)),
+            (' ',new StructureUtils.StructureTile(0, Nothing))
+            );
+        }
     }
     public enum PaintEnum {
         None = 0,
@@ -1141,7 +1354,7 @@ namespace WorldTwists {
             }
         }
         public override string ToString() {
-            return (inverted?"not ":"")+$"{string.Join(",",input)}->{output}";
+            return (inverted?"not ":"")+$" {string.Join(",",input)}-> {output}";
         }
     }
     [Serializable]
