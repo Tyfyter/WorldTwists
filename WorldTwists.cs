@@ -235,9 +235,6 @@ namespace WorldTwists {
                 if(!TwistConfig.Instance.HMPyramid) tasks.Add(new PassLegacy("Starting Hardmode", (p) => WorldGen.StartHardmode()));
                 else tasks.Add(new PassLegacy("Starting Hardmode and Placing loot", HMLooter));
             }
-            if(TwistConfig.Instance.Shuffled) tasks.Add(new PassLegacy("Shuffle", ShuffledBlocks));
-            else if(TwistConfig.Instance.Inverted) tasks.Add(new PassLegacy("Rarity Invert", Invert));
-            else if(TwistConfig.Instance.Randomize) tasks.Add(new PassLegacy("Randomize", RandomizedBlocks));
             if(TwistConfig.Instance.LiquidCycle != 0) {
                 int genIndex = tasks.FindIndex(genpass => genpass.Name.Equals("Settle Liquids Again"));
                 tasks.Insert(genIndex, new PassLegacy("Cycle Liquids", LiquidCycle));
@@ -255,6 +252,9 @@ namespace WorldTwists {
                 tasks.Add(new PassLegacy("Placing Landmines", Minefield));
             if(TwistConfig.Instance.TileMaps.Length>0||TwistConfig.Instance.WallMaps.Length>0)
                 tasks.Add(new PassLegacy("Switcheroo", Switcher));
+            if(TwistConfig.Instance.Shuffled) tasks.Add(new PassLegacy("Shuffle", ShuffledBlocks));
+            else if(TwistConfig.Instance.Inverted) tasks.Add(new PassLegacy("Rarity Invert", Invert));
+            else if(TwistConfig.Instance.Randomize) tasks.Add(new PassLegacy("Randomize", RandomizedBlocks));
             if(TwistConfig.Instance.Paint>0)
                 tasks.Add(new PassLegacy("Painting it,", Painter));
         }
@@ -456,7 +456,7 @@ namespace WorldTwists {
                 log+=$"( {listTypes[i]}, {listTypes[types.Count-i-1]}) ";
             }
             for(int i = 0; i < invalidTypes.Count; i++) {
-                pairings.Add(invalidTypes[i], invalidTypes[i]);
+                if(!pairings.ContainsKey(invalidTypes[i]))pairings.Add(invalidTypes[i], invalidTypes[i]);
             }
             WorldTwists.Instance.Logger.Info("Invert: Inverted "+log);
             for(int y = 0; y < Main.maxTilesY; y++) {
@@ -1192,7 +1192,7 @@ rand.NextString("aaaaa","alaaa","aaala","alala"),
                 "     ",
                 "     ",
                 "     ",
-  new string[] {" l   " ,"   l " ," l l ","  l  "}[t],
+  new string[] {" l3  " ,"  4l " ," l l ","  l  "}[t],
   new string[] {" 2l  " ,"  l2 " ," 1l2 ","  l  "}[t]
                 };
                 break;
@@ -1214,6 +1214,8 @@ rand.NextString("aaaaa","alaaa","aaala","alala"),
             ('l',new StructureUtils.StructureTile((ushort)i.createTile, OptionalTile)),
             ('1',new StructureUtils.StructureTile((ushort)i.createTile, OptionalTile, SlopeID.TopRight)),
             ('2',new StructureUtils.StructureTile((ushort)i.createTile, OptionalTile, SlopeID.TopLeft)),
+            ('3',new StructureUtils.StructureTile((ushort)i.createTile, OptionalTile, SlopeID.BottomRight)),
+            ('4',new StructureUtils.StructureTile((ushort)i.createTile, OptionalTile, SlopeID.BottomLeft)),
             (' ',new StructureUtils.StructureTile(0, Nothing))
             );
         }
