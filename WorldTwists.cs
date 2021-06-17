@@ -120,6 +120,24 @@ namespace WorldTwists {
         public int WallParser(string value) => int.TryParse(value, out int v) ? v : WallID.Search.GetId(value);
 
 
+        [Header("Waver")]
+
+        [Label("Wave Type")]
+        [DefaultValue(0)]
+		[DrawTicks]
+        public TwistExt.WaveType WaveType { get; set; } = 0;
+
+        [Label("Wave Period")]
+        [DefaultValue(0f)]
+        [Range(0f,100f)]
+        public float WavePeriod { get; set; } = 0;
+
+        [Label("Wave Intensity")]
+        [DefaultValue(0f)]
+        [Range(0f,20f)]
+        public float WaveIntensity { get; set; } = 0;
+
+
         #region other
         [Header("Other Changes")]
 
@@ -185,6 +203,15 @@ namespace WorldTwists {
         [Label("Solidify Trees")]
         [DefaultValue(false)]
         public bool TreeSolidification { get; set; } = false;
+
+        [Label("More WorldGen")]
+        [Tooltip("How much more the world should generate")]
+        [DefaultValue(0)]
+        public int MoreGen { get; set; } = 0;
+
+        [Label("2 Evils")]
+        [DefaultValue(false)]
+        public bool MoreEvils { get; set; } = false;
         #endregion
 
         #region universal
@@ -231,6 +258,45 @@ namespace WorldTwists {
     }
     public class TwistWorld : ModWorld {
         public override void ModifyWorldGenTasks(List<GenPass> tasks, ref float totalWeight) {
+            if(TwistConfig.Instance.MoreEvils) {
+                int genIndex = tasks.FindIndex(genpass => genpass.Name.Equals("Corruption"));
+                GenPass task;
+                if(genIndex>=0) {
+                    task = tasks[genIndex];
+                    bool crimson = WorldGen.crimson;
+                    tasks[genIndex] = new PassLegacy("Corruption",(p)=> {
+                        crimson = WorldGen.crimson;
+                        task.Apply(p);
+                        WorldGen.crimson = !crimson;
+                        task.Apply(p);
+                        WorldGen.crimson = false;
+                    });
+                    genIndex = tasks.FindIndex(genpass => genpass.Name.Equals("Mirco Biomes"));
+                    if(genIndex >= 0) {
+                        task = tasks[genIndex];
+                        tasks[genIndex] = new PassLegacy("Mirco Biomes", (p) => {
+                            task.Apply(p);
+                            WorldGen.crimson = crimson;
+                        });
+                    }
+                }
+            }
+            int moreGen = TwistConfig.Instance.MoreGen;
+            if(moreGen > 0) {
+                GenPass[] _tasks = tasks.ToArray();
+                int indexOffset = 0;
+                GenPass duplicate;
+                int dupeCount;
+                for(int i = 0; i < _tasks.Length; i++) {
+                    dupeCount = 0;
+                    for(int i2 = moreGen; i2-->0;) {
+                        duplicate = TwistExt.GetDuplicatePassForMoreGen(_tasks[i], dupeCount++);
+                        if(!(duplicate is null)) {
+                            tasks.Insert(i+(++indexOffset), duplicate);
+                        }
+                    }
+                }
+            }
             if(TwistConfig.Instance.AlreadyHM) {
                 if(!TwistConfig.Instance.HMPyramid) tasks.Add(new PassLegacy("Starting Hardmode", (p) => WorldGen.StartHardmode()));
                 else tasks.Add(new PassLegacy("Starting Hardmode and Placing loot", HMLooter));
@@ -248,6 +314,7 @@ namespace WorldTwists {
             if(TwistConfig.Instance.GreatEnsmallening)
                 tasks.Add(new PassLegacy("Mini Worlds", GreatEnsmallener));
             if(TwistConfig.Instance.Shear!=0) tasks.Add(new PassLegacy("Shear", Shear(TwistConfig.Instance.Shear)));
+            if(TwistConfig.Instance.WavePeriod!=0&&TwistConfig.Instance.WaveIntensity!=0) tasks.Add(new PassLegacy("Waving", Waver));
             if(TwistConfig.Instance.Minefield>0)
                 tasks.Add(new PassLegacy("Placing Landmines", Minefield));
             if(TwistConfig.Instance.TileMaps.Length>0||TwistConfig.Instance.WallMaps.Length>0)
@@ -739,6 +806,12 @@ namespace WorldTwists {
                 }
             }
             watch.Stop();
+            TypeMap[] maps = TwistConfig.Instance.TileMaps;
+            TypeMap map;
+            for(int i = maps.Length; i-- > 0;) {
+                map = maps[i];
+                for(int ini = map.input.Length; ini-- > 0;)pairings.Add((ushort)map.input[ini], (ushort)map.output);
+            }
             WorldTwists.Instance.Logger.Info("Switched tiles in"+watch.Elapsed);
         }
         public static void TreeSolidifier(GenerationProgress progress) {
@@ -772,6 +845,35 @@ namespace WorldTwists {
             watch.Stop();
 
             WorldTwists.Instance.Logger.Info($"Solidified trees in {watch.Elapsed} with {fails} failures");
+        }
+        public static void Waver(GenerationProgress progress) {
+            progress.Message = "Waving";
+            TwistExt.WaveType waveType = TwistConfig.Instance.WaveType;
+            double wavePeriod = TwistConfig.Instance.WavePeriod;
+            double waveIntensity = TwistConfig.Instance.WaveIntensity;
+            int diff = (int)Math.Ceiling(waveIntensity);
+            Tile[,] tiles = new Tile[Main.tile.GetLength(0), Main.tile.GetLength(1)];
+            for(int y1 = 1+diff; y1 < Main.maxTilesY; y1++) {
+                for(int x1 = 0; x1 < Main.maxTilesX; x1++) {
+                    if(Main.tileContainer[Main.tile[x1, y1].type]||Main.tileContainer[Main.tile[x1, y1-1].type]) {
+                        tiles[x1, y1-diff] = Main.tile[x1, y1];
+                    } else {
+                        int y = (y1 - diff) + (int)TwistExt.GetWave(waveType, x1, wavePeriod, waveIntensity);
+                        if(tiles[x1, y] is null)tiles[x1, y] = Main.tile[x1, y1];
+                    }
+                }
+            }
+            for(int i = Main.chest.Length; i-->0;) {
+                if(Main.chest[i] is null)continue;
+                Main.chest[i].y-=diff;
+            }
+            for(int y2 = 0; y2 < Main.maxTilesY; y2++) {
+                for(int x2 = 0; x2 < Main.maxTilesX; x2++) {
+                    if(!(tiles[x2, y2] is null)) Main.tile[x2, y2] = tiles[x2, y2];
+                    else if(!(Main.tile[x2, y2] is null)) Main.tile[x2, y2].active(false);
+                    else Main.tile[x2, y2] = new Tile();
+                }
+            }
         }
         public static WorldGenLegacyMethod Shear(int mult) => (GenerationProgress progress) => {
             progress.Message = "Shearing";
@@ -909,7 +1011,9 @@ namespace WorldTwists {
                     addTilePairing(ref Main.evilTiles, TileID.Ebonstone, tileCounts);
                     addTilePairing(ref Main.bloodTiles, TileID.Crimstone, tileCounts);
                     addTilePairing(ref Main.jungleTiles, TileID.JungleGrass, tileCounts);
+                    addTilePairing(ref Main.jungleTiles, TileID.LihzahrdBrick, tileCounts);
                     addTilePairing(ref Main.shroomTiles, TileID.MushroomGrass, tileCounts);
+                    addTilePairing(ref Main.snowTiles, TileID.SnowBlock, tileCounts);
                     addTilePairing(ref Main.snowTiles, TileID.IceBlock, tileCounts);
                 } catch(Exception) { }
             }
@@ -929,7 +1033,9 @@ namespace WorldTwists {
         }
     }
     public static class TwistExt {
-        public static void Shuffle<T>(this IList<T> list, UnifiedRandom rng) {
+        public static void Shuffle<T>(this IList<T> list, UnifiedRandom rng = null) {
+            if(rng is null)rng = Main.rand;
+
             int n = list.Count;
             while (n > 1) {
                 n--;
@@ -1283,6 +1389,94 @@ rand.NextString("aaaaa","alaaa","aaala","alala"),
             ('l',new StructureUtils.StructureTile(TileID.Pearlwood, OptionalTile)),
             (' ',new StructureUtils.StructureTile(0, Nothing))
             );
+        }
+        public static GenPass GetDuplicatePassForMoreGen(GenPass pass, int dupeCount) {
+            switch(pass.Name) {
+                case "Dungeon":
+                return new PassLegacy(dupeCount>0?$"Dungeon {dupeCount+2}":"Dungeon 2: Electric Boogaloo", (GenerationProgress progress)=> {
+		            int XPos = 0;
+                    double approach = 0.1 * dupeCount;
+		            if (WorldGen.dungeonX > Main.maxTilesX/2) {
+			            XPos = WorldGen.genRand.Next((int)(Main.maxTilesX * (0.05+approach)), (int)(Main.maxTilesX * (0.2+approach)));
+		            } else {
+			            XPos = WorldGen.genRand.Next((int)(Main.maxTilesX * (0.8-approach)), (int)(Main.maxTilesX * (0.95-approach)));
+		            }
+		            int y8 = (int)((Main.worldSurface + Main.rockLayer) / 2.0) + WorldGen.genRand.Next(-200, 200);
+		            WorldGen.MakeDungeon(XPos, y8);
+                });
+                case "Tunnels":
+                case "Mount Caves":
+                case "Small Holes":
+                case "Dirt Layer Caves":
+                case "Rock Layer Caves":
+                case "Surface Caves":
+                case "Jungle":
+                case "Marble":
+                case "Granite":
+                case "Full Desert":
+                case "Floating Islands":
+                case "Mushroom Patches":
+                case "Shinies":
+                case "Lakes":
+                case "Gems":
+                case "Pyramids":
+                case "Living Trees":
+                case "Altars":
+                case "Hives":
+                case "Jungle Chests":
+                case "Ice":
+                case "Traps":
+                case "Life Crystals":
+                case "Statues":
+                case "Buried Chests":
+                case "Surface Chests":
+                case "Water Chests":
+                case "Spider Caves":
+                case "Gem Caves":
+                case "Jungle Trees":
+                case "Pots":
+                case "Hellforge":
+                case "Moss":
+                case "Sunflowers":
+                case "Planting Trees":
+                case "Herbs":
+                case "Dye Plants":
+                case "Weeds":
+                case "Jungle Plants":
+                case "Vines":
+                case "Flowers":
+                case "Mushrooms":
+                case "Stalac":
+                case "Gems In Ice Biome":
+                case "Random Gems":
+                case "Larva":
+                case "Micro Biomes":
+                case "Jungle Temple":
+                case "Temple":
+                return pass;
+            }
+            return null;
+        }
+        public enum WaveType {
+            Square,
+            Sawtooth,
+            Triangle,
+            Sine
+        }
+        public static double GetWave(WaveType type, double position, double length, double multiplier) {
+            switch(type) {
+                case WaveType.Square:
+                return (position%(length*2))>length?0:multiplier;
+                case WaveType.Sawtooth:
+                length *= 2;
+                return ((position%length)/length)*multiplier;
+                case WaveType.Triangle:
+                length *= 2;
+                return (1-2*Math.Abs(Math.Round(position/length)-(position/length)))*multiplier;
+                case WaveType.Sine:
+                return (Math.Sin(position * Math.PI / length) + 1)*multiplier/2;
+            }
+            return 0;
         }
     }
     public enum PaintEnum {
