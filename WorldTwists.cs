@@ -212,6 +212,11 @@ namespace WorldTwists {
         [Label("2 Evils")]
         [DefaultValue(false)]
         public bool MoreEvils { get; set; } = false;
+
+        [Label("Bee Hell")]
+        [Tooltip("Bee Hell")]
+        [DefaultValue(false)]
+        public bool BeeHell { get; set; } = false;
         #endregion
 
         #region universal
@@ -281,6 +286,7 @@ namespace WorldTwists {
                     }
                 }
             }
+            if (TwistConfig.Instance.BeeHell) tasks.Add(new PassLegacy("BeeHell", BeeHell));
             int moreGen = TwistConfig.Instance.MoreGen;
             if(moreGen > 0) {
                 GenPass[] _tasks = tasks.ToArray();
@@ -322,8 +328,7 @@ namespace WorldTwists {
             if(TwistConfig.Instance.Shuffled) tasks.Add(new PassLegacy("Shuffle", ShuffledBlocks));
             else if(TwistConfig.Instance.Inverted) tasks.Add(new PassLegacy("Rarity Invert", Invert));
             else if(TwistConfig.Instance.Randomize) tasks.Add(new PassLegacy("Randomize", RandomizedBlocks));
-            if(TwistConfig.Instance.Paint>0)
-                tasks.Add(new PassLegacy("Painting it,", Painter));
+            if(TwistConfig.Instance.Paint>0) tasks.Add(new PassLegacy("Painting it,", Painter));
         }
         public static void LiquidCycle(GenerationProgress progress) {
             Tile tile;
@@ -875,6 +880,16 @@ namespace WorldTwists {
                 }
             }
         }
+        public static void BeeHell(GenerationProgress progress) {
+            progress.Message = "Bee Hell";
+            for (int y = Main.maxTilesY - 200; y < Main.maxTilesY; y++) {
+                for (int x = 0; x < Main.maxTilesX; x++) {
+                    if (Main.tile[x, y].type == TileID.Ash) {
+                        Main.tile[x, y].type = TileID.Hive;
+                    }
+                }
+            }
+        }
         public static WorldGenLegacyMethod Shear(int mult) => (GenerationProgress progress) => {
             progress.Message = "Shearing";
             int oobtiles = Main.offLimitBorderTiles;
@@ -985,7 +1000,7 @@ namespace WorldTwists {
             TagCompound tag = new TagCompound();
             try {
                 tag.Add("smol", smol);
-                if(pairings.Count>0) {
+                if(pairings?.Count>0) {
                     tag.Add("pairingKeys", pairings.Keys.ToList());
                     tag.Add("pairingValues", pairings.Values.ToList());
                 }
