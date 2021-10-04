@@ -49,8 +49,16 @@ namespace WorldTwists {
         [Header("Shuffled")]
 
         [Label("Shuffled Blocks")]
-        [DefaultValue(true)]
+        [DefaultValue(false)]
         public bool Shuffled = true;
+
+        [Label("Shuffled Walls")]
+        [DefaultValue(false)]
+        public bool ShuffledWalls = true;
+
+        [Label("Shuffled Walls Include Air")]
+        [DefaultValue(false)]
+        public bool ShuffledAirWalls = true;
 
         [Label("Randomized Blocks uses world seed")]
         [DefaultValue(true)]
@@ -261,6 +269,14 @@ namespace WorldTwists {
             WallMaps = WallMapsStr.Select((m)=>TypeMap.FromString(m,WallParser)).ToArray();
         }
     }
+    [Label("Re-twisting Events")]
+    public class TwistSubConfig : ModConfig {
+        public override ConfigScope Mode => ConfigScope.ServerSide;
+        public TwistConfig KillBoss;
+        public TwistConfig KillWOF;
+        public TwistConfig PlayerDeath;
+        public TwistConfig Achievement;
+    }
     public class TwistWorld : ModWorld {
         public override void ModifyWorldGenTasks(List<GenPass> tasks, ref float totalWeight) {
             if(TwistConfig.Instance.MoreEvils) {
@@ -269,7 +285,7 @@ namespace WorldTwists {
                 if(genIndex>=0) {
                     task = tasks[genIndex];
                     bool crimson = WorldGen.crimson;
-                    tasks[genIndex] = new PassLegacy("Corruption",(p)=> {
+                    tasks[genIndex] = new PassLegacy("Corruption", (p)=> {
                         crimson = WorldGen.crimson;
                         task.Apply(p);
                         WorldGen.crimson = !crimson;
@@ -328,7 +344,12 @@ namespace WorldTwists {
             if(TwistConfig.Instance.Shuffled) tasks.Add(new PassLegacy("Shuffle", ShuffledBlocks));
             else if(TwistConfig.Instance.Inverted) tasks.Add(new PassLegacy("Rarity Invert", Invert));
             else if(TwistConfig.Instance.Randomize) tasks.Add(new PassLegacy("Randomize", RandomizedBlocks));
-            if(TwistConfig.Instance.Paint>0) tasks.Add(new PassLegacy("Painting it,", Painter));
+            if (TwistConfig.Instance.ShuffledWalls) tasks.Add(new PassLegacy("WallShuffle", ShuffledWalls));
+            if (TwistConfig.Instance.Paint>0)
+                tasks.Add(new PassLegacy("Painting it,", Painter));
+        }
+        public static void AddGenTasks(TwistConfig twistConfig) {
+
         }
         public static void LiquidCycle(GenerationProgress progress) {
             Tile tile;
@@ -886,6 +907,61 @@ namespace WorldTwists {
                 for (int x = 0; x < Main.maxTilesX; x++) {
                     if (Main.tile[x, y].type == TileID.Ash) {
                         Main.tile[x, y].type = TileID.Hive;
+                    }
+                }
+            }
+        }
+        public static void ShuffledWalls(GenerationProgress progress) {
+            WorldTwists.Instance.Logger.Info("Shuffling Walls");
+            progress.Message = "Shuffling Walls";
+            //Dictionary<int,int> count
+            List<ushort> types = new List<ushort>() { };
+            Tile tile;
+            for (int y = 0; y < Main.maxTilesY; y++) {
+                for (int x = 0; x < Main.maxTilesX; x++) {
+                    tile = Main.tile[x, y];
+                    if (!types.Contains(tile.wall)) types.Add(tile.wall);
+                }
+            }
+            List<ushort> shuffledTypes = types.ToList();
+            //WorldTwists.Instance.Logger.Info("Randomize: Shuffled "+WorldGen.genRand.);
+            bool UseWorldSeed = TwistConfig.Instance.UseWorldSeed;
+            bool UseComplexSeed = TwistConfig.Instance.UseComplexSeed;
+            WorldTwists.Instance.Logger.Info($"Shuffle: Using settings UseWorldSeed: {UseWorldSeed}; UseComplexSeed: {UseComplexSeed}");
+            if (UseWorldSeed) {
+                if (UseComplexSeed) {
+                    WorldTwists.Instance.Logger.Info("Shuffle: inext " + typeof(UnifiedRandom).GetField("inext", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(WorldGen.genRand));
+                    WorldTwists.Instance.Logger.Info("Shuffle: inextp " + typeof(UnifiedRandom).GetField("inextp", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(WorldGen.genRand));
+                    WorldTwists.Instance.Logger.Info("Shuffle: SeedArray: " + string.Join(",", (int[])typeof(UnifiedRandom).GetField("SeedArray", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(WorldGen.genRand)));
+                }
+                shuffledTypes.Shuffle(WorldGen.genRand);
+            } else {
+                UnifiedRandom rand = new UnifiedRandom(TwistConfig.Instance.RandomizeSeed);
+                if (UseComplexSeed) {
+                    typeof(UnifiedRandom).GetField("inext", BindingFlags.NonPublic | BindingFlags.Instance).SetValue(rand, TwistConfig.Instance.inext);
+                    typeof(UnifiedRandom).GetField("inextp", BindingFlags.NonPublic | BindingFlags.Instance).SetValue(rand, TwistConfig.Instance.inextp);
+                    typeof(UnifiedRandom).GetField("SeedArray", BindingFlags.NonPublic | BindingFlags.Instance).SetValue(rand, TwistConfig.Instance.SeedArray.ToArray());
+                }
+                shuffledTypes.Shuffle(rand);
+            }
+            Dictionary<ushort, ushort>  wallPairings = new Dictionary<ushort, ushort>() { };
+            string log = "";
+            if (!TwistConfig.Instance.ShuffledAirWalls) {
+                wallPairings.Add(WallID.None, WallID.None);
+                types.Remove(WallID.None);
+            }
+            for (int i = 0; i < types.Count; i++) {
+                wallPairings.Add(types[i], shuffledTypes[i]);
+                log += $"[ {types[i]} ( {TwistExt.getTileName(types[i])}), {shuffledTypes[i]} ( {TwistExt.getTileName(shuffledTypes[i])})] ";
+            }
+            WorldTwists.Instance.Logger.Info("Shuffle: Shuffled " + log);
+            for (int y = 0; y < Main.maxTilesY; y++) {
+                for (int x = 0; x < Main.maxTilesX; x++) {
+                    try {
+                        Main.tile[x, y].wall = wallPairings[Main.tile[x, y].wall];
+                    } catch (Exception e) {
+                        WorldTwists.Instance.Logger.Info("Shuffle: Ran into issue randomizing " + Main.tile[x, y].wall);
+                        throw e;
                     }
                 }
             }
