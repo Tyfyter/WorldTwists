@@ -11,7 +11,9 @@ using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using Terraria;
+using Terraria.Achievements;
 using Terraria.GameContent.Generation;
 using Terraria.ID;
 using Terraria.ModLoader;
@@ -33,6 +35,22 @@ namespace WorldTwists {
         public override void Load() {
             if(Instance!=null) Logger.Info("WorldTwists Instance already loaded at Load()");
             Instance = this;
+            //Main.Achievements.OnAchievementCompleted += OnAchievementCompleted;
+            this.AddConfig(typeof(TwistConfig).Name, new TwistConfig());
+            this.AddConfig(typeof(RetwistConfig).Name, new RetwistConfig());
+        }
+
+        private void OnAchievementCompleted(Achievement achievement) {
+            if (Main.netMode == NetmodeID.SinglePlayer) {
+                ThreadPool.QueueUserWorkItem(AchievementCallback, 1);
+            }
+        }
+        public static void AchievementCallback(object threadContext) {
+            List<GenPass> tasks = new List<GenPass>();
+            //TwistWorld.AddGenTasks(RetwistConfig.Instance.Achievement, tasks);
+            foreach (GenPass item in tasks) {
+                item.Apply(null);
+            }
         }
 
         public override void Unload() {
@@ -44,6 +62,9 @@ namespace WorldTwists {
     [Label("Settings")]
     public class TwistConfig : ModConfig {
         public static TwistConfig Instance;
+        public override bool Autoload(ref string name) {
+            return false;
+        }
         public override ConfigScope Mode => ConfigScope.ServerSide;
         #region randomization
         [Header("Shuffled")]
@@ -270,22 +291,45 @@ namespace WorldTwists {
         }
     }
     [Label("Re-twisting Events")]
-    public class TwistSubConfig : ModConfig {
+    public class RetwistConfig : ModConfig {
+        public static RetwistConfig Instance;
+        public override bool Autoload(ref string name) {
+            return false;
+        }
         public override ConfigScope Mode => ConfigScope.ServerSide;
+        [Label("Boss Kills Only Twist Once")]
+        [Tooltip("Determines whether repeatedly killing the same boss will continue twisting the world")]
+        public bool TrackKillBoss;
+
+        [Label("Boss Kill")]
+        [Tooltip("Does not trigger on Wall of Flesh if \"Boss Kills Only Twist Once\" is enabled")]
         public TwistConfig KillBoss;
+        [Label("Wall Of Flesh Kill")]
+        [Tooltip("Does not trigger if \"Boss Kills Only Twist Once\" is disabled")]
         public TwistConfig KillWOF;
+        [Label("Player Death")]
         public TwistConfig PlayerDeath;
-        public TwistConfig Achievement;
+        //[Label("Achievement")]
+        //public TwistConfig Achievement;
     }
     public class TwistWorld : ModWorld {
         public override void ModifyWorldGenTasks(List<GenPass> tasks, ref float totalWeight) {
-            if(TwistConfig.Instance.MoreEvils) {
+            AddGenTasks(TwistConfig.Instance, tasks);
+        }
+        public override void ModifyHardmodeTasks(List<GenPass> tasks) {
+            if(RetwistConfig.Instance.TrackKillBoss) AddGenTasks(RetwistConfig.Instance.KillWOF, tasks);
+        }
+        public static void AddGenTasks(TwistConfig twistConfig, List<GenPass> tasks) {
+            if (twistConfig is null || tasks is null) {
+                return;
+            }
+            if (twistConfig.MoreEvils) {
                 int genIndex = tasks.FindIndex(genpass => genpass.Name.Equals("Corruption"));
                 GenPass task;
-                if(genIndex>=0) {
+                if (genIndex >= 0) {
                     task = tasks[genIndex];
                     bool crimson = WorldGen.crimson;
-                    tasks[genIndex] = new PassLegacy("Corruption", (p)=> {
+                    tasks[genIndex] = new PassLegacy("Corruption", (p) => {
                         crimson = WorldGen.crimson;
                         task.Apply(p);
                         WorldGen.crimson = !crimson;
@@ -293,7 +337,7 @@ namespace WorldTwists {
                         WorldGen.crimson = false;
                     });
                     genIndex = tasks.FindIndex(genpass => genpass.Name.Equals("Mirco Biomes"));
-                    if(genIndex >= 0) {
+                    if (genIndex >= 0) {
                         task = tasks[genIndex];
                         tasks[genIndex] = new PassLegacy("Mirco Biomes", (p) => {
                             task.Apply(p);
@@ -302,79 +346,77 @@ namespace WorldTwists {
                     }
                 }
             }
-            if (TwistConfig.Instance.BeeHell) tasks.Add(new PassLegacy("BeeHell", BeeHell));
-            int moreGen = TwistConfig.Instance.MoreGen;
-            if(moreGen > 0) {
+            if (twistConfig.BeeHell) tasks.Add(new PassLegacy("BeeHell", BeeHell));
+            int moreGen = twistConfig.MoreGen;
+            if (moreGen > 0) {
                 GenPass[] _tasks = tasks.ToArray();
                 int indexOffset = 0;
                 GenPass duplicate;
                 int dupeCount;
-                for(int i = 0; i < _tasks.Length; i++) {
+                for (int i = 0; i < _tasks.Length; i++) {
                     dupeCount = 0;
-                    for(int i2 = moreGen; i2-->0;) {
+                    for (int i2 = moreGen; i2-- > 0;) {
                         duplicate = TwistExt.GetDuplicatePassForMoreGen(_tasks[i], dupeCount++);
-                        if(!(duplicate is null)) {
-                            tasks.Insert(i+(++indexOffset), duplicate);
+                        if (!(duplicate is null)) {
+                            tasks.Insert(i + (++indexOffset), duplicate);
                         }
                     }
                 }
             }
-            if(TwistConfig.Instance.AlreadyHM) {
-                if(!TwistConfig.Instance.HMPyramid) tasks.Add(new PassLegacy("Starting Hardmode", (p) => WorldGen.StartHardmode()));
+            if (twistConfig.AlreadyHM) {
+                if (!twistConfig.HMPyramid) tasks.Add(new PassLegacy("Starting Hardmode", (p) => WorldGen.StartHardmode()));
                 else tasks.Add(new PassLegacy("Starting Hardmode and Placing loot", HMLooter));
             }
-            if(TwistConfig.Instance.LiquidCycle != 0) {
+            if (twistConfig.LiquidCycle != 0) {
                 int genIndex = tasks.FindIndex(genpass => genpass.Name.Equals("Settle Liquids Again"));
-                tasks.Insert(genIndex, new PassLegacy("Cycle Liquids", LiquidCycle));
+                tasks.Insert(genIndex, new PassLegacy("Cycle Liquids", LiquidCycle(twistConfig)));
             }
-            if(TwistConfig.Instance.TreeSolidification)
+            if (twistConfig.TreeSolidification)
                 tasks.Add(new PassLegacy("Solidifying Trees", TreeSolidifier));
-            if(TwistConfig.Instance.Flipped) {
+            if (twistConfig.Flipped) {
                 tasks.Add(new PassLegacy("Flipping World", Flipper));
                 tasks.Add(tasks[tasks.FindIndex(genpass => genpass.Name.Equals("Settle Liquids Again"))]);
             }
-            if(TwistConfig.Instance.GreatEnsmallening)
-                tasks.Add(new PassLegacy("Mini Worlds", GreatEnsmallener));
-            if(TwistConfig.Instance.Shear!=0) tasks.Add(new PassLegacy("Shear", Shear(TwistConfig.Instance.Shear)));
-            if(TwistConfig.Instance.WavePeriod!=0&&TwistConfig.Instance.WaveIntensity!=0) tasks.Add(new PassLegacy("Waving", Waver));
-            if(TwistConfig.Instance.Minefield>0)
-                tasks.Add(new PassLegacy("Placing Landmines", Minefield));
-            if(TwistConfig.Instance.TileMaps.Length>0||TwistConfig.Instance.WallMaps.Length>0)
-                tasks.Add(new PassLegacy("Switcheroo", Switcher));
-            if(TwistConfig.Instance.Shuffled) tasks.Add(new PassLegacy("Shuffle", ShuffledBlocks));
-            else if(TwistConfig.Instance.Inverted) tasks.Add(new PassLegacy("Rarity Invert", Invert));
-            else if(TwistConfig.Instance.Randomize) tasks.Add(new PassLegacy("Randomize", RandomizedBlocks));
-            if (TwistConfig.Instance.ShuffledWalls) tasks.Add(new PassLegacy("WallShuffle", ShuffledWalls));
-            if (TwistConfig.Instance.Paint>0)
-                tasks.Add(new PassLegacy("Painting it,", Painter));
-        }
-        public static void AddGenTasks(TwistConfig twistConfig) {
+            if (twistConfig.GreatEnsmallening)
+                tasks.Add(new PassLegacy("Mini Worlds", GreatEnsmallener(twistConfig)));
+            if (twistConfig.Shear != 0) tasks.Add(new PassLegacy("Shear", Shear(twistConfig.Shear)));
+            if (twistConfig.WavePeriod != 0 && twistConfig.WaveIntensity != 0) tasks.Add(new PassLegacy("Waving", Waver(twistConfig)));
+            if (twistConfig.Minefield > 0)
+                tasks.Add(new PassLegacy("Placing Landmines", Minefield(twistConfig)));
+            if (twistConfig.TileMaps.Length > 0 || twistConfig.WallMaps.Length > 0)
+                tasks.Add(new PassLegacy("Switcheroo", Switcher(twistConfig)));
+            if (twistConfig.Shuffled) tasks.Add(new PassLegacy("Shuffle", ShuffledBlocks(twistConfig)));
+            else if (twistConfig.Inverted) tasks.Add(new PassLegacy("Rarity Invert", Invert(twistConfig)));
+            else if (twistConfig.Randomize) tasks.Add(new PassLegacy("Randomize", RandomizedBlocks(twistConfig)));
+            if (twistConfig.ShuffledWalls) tasks.Add(new PassLegacy("WallShuffle", ShuffledWalls(twistConfig)));
+            if (twistConfig.Paint > 0)
+                tasks.Add(new PassLegacy("Painting it,", Painter(twistConfig)));
 
         }
-        public static void LiquidCycle(GenerationProgress progress) {
+        public static WorldGenLegacyMethod LiquidCycle(TwistConfig twistConfig) => (GenerationProgress progress) => {
             Tile tile;
             for(int y = 0; y < Main.maxTilesY; y++) {
                 for(int x = 0; x < Main.maxTilesX; x++) {
                     tile = Main.tile[x, y];
-                    tile.liquidType((tile.liquidType()+TwistConfig.Instance.LiquidCycle+3)%3);
+                    tile.liquidType((tile.liquidType()+twistConfig.LiquidCycle+3)%3);
                 }
             }
-        }
-        public static void ShuffledBlocks(GenerationProgress progress) {
+        };
+        public static WorldGenLegacyMethod ShuffledBlocks(TwistConfig twistConfig) => (GenerationProgress progress) => {
             WorldTwists.Instance.Logger.Info("Shuffling Blocks");
-            progress.Message = "Shuffling Blocks";
+            if(progress is GenerationProgress) progress.Message = "Shuffling Blocks";
             //Dictionary<int,int> count
             List<ushort> types = new List<ushort>() { };
             List<ushort> invalidTypes = new List<ushort>() { };
-            if(!TwistConfig.Instance.RandomizeBoulders) {
+            if(!twistConfig.RandomizeBoulders) {
                 invalidTypes.Add(TileID.Boulder);
             }
-            if(!TwistConfig.Instance.Sandomize) {
+            if(!twistConfig.Sandomize) {
                 for(ushort i = 0; i < TileID.Sets.Falling.Length; i++) {
                     if(TileID.Sets.Falling[i]) invalidTypes.Add(i);
                 }
             }
-            if(!TwistConfig.Instance.JankLoot) {
+            if(!twistConfig.JankLoot) {
                 invalidTypes.Add(TileID.ClosedDoor);
             }
             Tile tile;
@@ -393,8 +435,8 @@ namespace WorldTwists {
             }
             List<ushort> shuffledTypes = types.ToList();
             //WorldTwists.Instance.Logger.Info("Randomize: Shuffled "+WorldGen.genRand.);
-            bool UseWorldSeed = TwistConfig.Instance.UseWorldSeed;
-            bool UseComplexSeed = TwistConfig.Instance.UseComplexSeed;
+            bool UseWorldSeed = twistConfig.UseWorldSeed;
+            bool UseComplexSeed = twistConfig.UseComplexSeed;
             WorldTwists.Instance.Logger.Info($"Shuffle: Using settings UseWorldSeed: {UseWorldSeed}; UseComplexSeed: {UseComplexSeed}");
             if(UseWorldSeed) {
                 if(UseComplexSeed) {
@@ -404,11 +446,11 @@ namespace WorldTwists {
                 }
                 shuffledTypes.Shuffle(WorldGen.genRand);
             } else {
-                UnifiedRandom rand = new UnifiedRandom(TwistConfig.Instance.RandomizeSeed);
+                UnifiedRandom rand = new UnifiedRandom(twistConfig.RandomizeSeed);
                 if(UseComplexSeed) {
-                    typeof(UnifiedRandom).GetField("inext", BindingFlags.NonPublic|BindingFlags.Instance).SetValue(rand, TwistConfig.Instance.inext);
-                    typeof(UnifiedRandom).GetField("inextp", BindingFlags.NonPublic|BindingFlags.Instance).SetValue(rand, TwistConfig.Instance.inextp);
-                    typeof(UnifiedRandom).GetField("SeedArray", BindingFlags.NonPublic|BindingFlags.Instance).SetValue(rand, TwistConfig.Instance.SeedArray.ToArray());
+                    typeof(UnifiedRandom).GetField("inext", BindingFlags.NonPublic|BindingFlags.Instance).SetValue(rand, twistConfig.inext);
+                    typeof(UnifiedRandom).GetField("inextp", BindingFlags.NonPublic|BindingFlags.Instance).SetValue(rand, twistConfig.inextp);
+                    typeof(UnifiedRandom).GetField("SeedArray", BindingFlags.NonPublic|BindingFlags.Instance).SetValue(rand, twistConfig.SeedArray.ToArray());
                 }
                 shuffledTypes.Shuffle(rand);
             }
@@ -436,166 +478,166 @@ namespace WorldTwists {
                     }
                 }
             }
-        }
-        public static void RandomizedBlocks(GenerationProgress progress) {
+        };
+        public static WorldGenLegacyMethod RandomizedBlocks(TwistConfig twistConfig) => (GenerationProgress progress) => {
             WorldTwists.Instance.Logger.Info("Randomizing Blocks");
-            progress.Message = "Randomizing Blocks";
+            if (progress is GenerationProgress) progress.Message = "Randomizing Blocks";
             //Dictionary<int,int> count
             List<ushort> types = new List<ushort>() { };
             List<ushort> invalidTypes = new List<ushort>() { };
-            if(!TwistConfig.Instance.RandomizeBoulders) {
+            if (!twistConfig.RandomizeBoulders) {
                 invalidTypes.Add(TileID.Boulder);
             }
-            if(!TwistConfig.Instance.Sandomize) {
-                for(ushort i = 0; i < TileID.Sets.Falling.Length; i++) {
-                    if(TileID.Sets.Falling[i]) invalidTypes.Add(i);
+            if (!twistConfig.Sandomize) {
+                for (ushort i = 0; i < TileID.Sets.Falling.Length; i++) {
+                    if (TileID.Sets.Falling[i]) invalidTypes.Add(i);
                 }
             }
-            if(!TwistConfig.Instance.JankLoot) {
+            if (!twistConfig.JankLoot) {
                 invalidTypes.Add(TileID.ClosedDoor);
             }
             Tile tile;
-            for(int y = 0; y < Main.maxTilesY; y++) {
-                for(int x = 0; x < Main.maxTilesX; x++) {
+            for (int y = 0; y < Main.maxTilesY; y++) {
+                for (int x = 0; x < Main.maxTilesX; x++) {
                     tile = Main.tile[x, y];
-                    if(!types.Contains(tile.type)) types.Add(tile.type);
-                    if(!TwistExt.Solid(tile.type)&&!invalidTypes.Contains(tile.type)) invalidTypes.Add(tile.type);
+                    if (!types.Contains(tile.type)) types.Add(tile.type);
+                    if (!TwistExt.Solid(tile.type) && !invalidTypes.Contains(tile.type)) invalidTypes.Add(tile.type);
                 }
             }
-            for(int i = 0; i < types.Count; i++) {
-                if(invalidTypes.Contains(types[i])) {
+            for (int i = 0; i < types.Count; i++) {
+                if (invalidTypes.Contains(types[i])) {
                     types.RemoveAt(i);
                     i--;
                 }
             }
             //WorldTwists.Instance.Logger.Info("Randomize: Shuffled "+WorldGen.genRand.);
-            bool UseWorldSeed = TwistConfig.Instance.UseWorldSeed;
-            bool UseComplexSeed = TwistConfig.Instance.UseComplexSeed;
+            bool UseWorldSeed = twistConfig.UseWorldSeed;
+            bool UseComplexSeed = twistConfig.UseComplexSeed;
             WorldTwists.Instance.Logger.Info($"Randomize: Using settings UseWorldSeed: {UseWorldSeed}; UseComplexSeed: {UseComplexSeed}");
             UnifiedRandom rand;
-            if(UseWorldSeed) {
+            if (UseWorldSeed) {
                 rand = WorldGen.genRand;
-                if(UseComplexSeed) {
-                    WorldTwists.Instance.Logger.Info("Randomize: inext "+typeof(UnifiedRandom).GetField("inext", BindingFlags.NonPublic|BindingFlags.Instance).GetValue(WorldGen.genRand));
-                    WorldTwists.Instance.Logger.Info("Randomize: inextp "+typeof(UnifiedRandom).GetField("inextp", BindingFlags.NonPublic|BindingFlags.Instance).GetValue(WorldGen.genRand));
-                    WorldTwists.Instance.Logger.Info("Randomize: SeedArray: "+string.Join(",", (int[])typeof(UnifiedRandom).GetField("SeedArray", BindingFlags.NonPublic|BindingFlags.Instance).GetValue(WorldGen.genRand)));
+                if (UseComplexSeed) {
+                    WorldTwists.Instance.Logger.Info("Randomize: inext " + typeof(UnifiedRandom).GetField("inext", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(WorldGen.genRand));
+                    WorldTwists.Instance.Logger.Info("Randomize: inextp " + typeof(UnifiedRandom).GetField("inextp", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(WorldGen.genRand));
+                    WorldTwists.Instance.Logger.Info("Randomize: SeedArray: " + string.Join(",", (int[])typeof(UnifiedRandom).GetField("SeedArray", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(WorldGen.genRand)));
                 }
             } else {
-                rand = new UnifiedRandom(TwistConfig.Instance.RandomizeSeed);
-                if(UseComplexSeed) {
-                    typeof(UnifiedRandom).GetField("inext", BindingFlags.NonPublic|BindingFlags.Instance).SetValue(rand, TwistConfig.Instance.inext);
-                    typeof(UnifiedRandom).GetField("inextp", BindingFlags.NonPublic|BindingFlags.Instance).SetValue(rand, TwistConfig.Instance.inextp);
-                    typeof(UnifiedRandom).GetField("SeedArray", BindingFlags.NonPublic|BindingFlags.Instance).SetValue(rand, TwistConfig.Instance.SeedArray.ToArray());
+                rand = new UnifiedRandom(twistConfig.RandomizeSeed);
+                if (UseComplexSeed) {
+                    typeof(UnifiedRandom).GetField("inext", BindingFlags.NonPublic | BindingFlags.Instance).SetValue(rand, twistConfig.inext);
+                    typeof(UnifiedRandom).GetField("inextp", BindingFlags.NonPublic | BindingFlags.Instance).SetValue(rand, twistConfig.inextp);
+                    typeof(UnifiedRandom).GetField("SeedArray", BindingFlags.NonPublic | BindingFlags.Instance).SetValue(rand, twistConfig.SeedArray.ToArray());
                 }
             }
-            for(int y = 0; y < Main.maxTilesY; y++) {
-                for(int x = 0; x < Main.maxTilesX; x++) {
+            for (int y = 0; y < Main.maxTilesY; y++) {
+                for (int x = 0; x < Main.maxTilesX; x++) {
                     try {
                         tile = Main.tile[x, y];
-                        if(Main.tile[x, y].active()&&types.Contains(tile.type))
+                        if (Main.tile[x, y].active() && types.Contains(tile.type))
                             tile.type = rand.Next(types);
-                        if(Main.tileCut[Main.tile[x, y].type]&&Main.tile[x, y].type!=TileID.Pots&&Main.tile[x, y].type!=TileID.JunglePlants&&Main.tile[x, y].type!=TileID.Larva)
+                        if (Main.tileCut[Main.tile[x, y].type] && Main.tile[x, y].type != TileID.Pots && Main.tile[x, y].type != TileID.JunglePlants && Main.tile[x, y].type != TileID.Larva)
                             Main.tile[x, y].active(false);
-                    } catch(Exception e) {
-                        WorldTwists.Instance.Logger.Info("Randomize: Ran into issue randomizing "+Main.tile[x, y].type);
+                    } catch (Exception e) {
+                        WorldTwists.Instance.Logger.Info("Randomize: Ran into issue randomizing " + Main.tile[x, y].type);
                         throw e;
                     }
                 }
             }
-        }
-        public static void Invert(GenerationProgress progress) {
+        };
+        public static WorldGenLegacyMethod Invert(TwistConfig twistConfig) => (GenerationProgress progress) => {
             WorldTwists.Instance.Logger.Info("Inverting Blocks");
-            progress.Message = "Inverting Blocks";
+            if (progress is GenerationProgress) progress.Message = "Inverting Blocks";
             //Dictionary<int,int> count
             Dictionary<ushort, int> types = new Dictionary<ushort, int>() { };
             List<ushort> invalidTypes = new List<ushort>() { };
-            if(!TwistConfig.Instance.RandomizeBoulders) {
+            if (!twistConfig.RandomizeBoulders) {
                 invalidTypes.Add(TileID.Boulder);
-                for(ushort i = 0; i < TileLoader.TileCount; i++) {
-                    if(Main.tileFrameImportant[i])invalidTypes.Add(i);
+                for (ushort i = 0; i < TileLoader.TileCount; i++) {
+                    if (Main.tileFrameImportant[i]) invalidTypes.Add(i);
                 }
             }
-            if(!TwistConfig.Instance.JankLoot) {
+            if (!twistConfig.JankLoot) {
                 invalidTypes.Add(TileID.ClosedDoor);
             }
             Tile tile;
-            for(int y = 0; y < Main.maxTilesY; y++) {
-                for(int x = 0; x < Main.maxTilesX; x++) {
+            for (int y = 0; y < Main.maxTilesY; y++) {
+                for (int x = 0; x < Main.maxTilesX; x++) {
                     tile = Main.tile[x, y];
-                    if(!TwistExt.Solid(tile.type)) {
-                        if(!invalidTypes.Contains(tile.type)) invalidTypes.Add(tile.type);
+                    if (!TwistExt.Solid(tile.type)) {
+                        if (!invalidTypes.Contains(tile.type)) invalidTypes.Add(tile.type);
                         continue;
                     }
-                    if(invalidTypes.Contains(tile.type)) continue;
-                    if(types.ContainsKey(tile.type)) {
+                    if (invalidTypes.Contains(tile.type)) continue;
+                    if (types.ContainsKey(tile.type)) {
                         types[tile.type]++;
                     } else {
                         types.Add(tile.type, 1);
                     }
                 }
             }
-            for(int i = 0; i < invalidTypes.Count; i++) {
-                if(types.ContainsKey(invalidTypes[i])) {
+            for (int i = 0; i < invalidTypes.Count; i++) {
+                if (types.ContainsKey(invalidTypes[i])) {
                     types.Remove(invalidTypes[i]);
                     i--;
                 }
             }
             List<KeyValuePair<ushort, int>> listTypes = types.ToList();
-            listTypes.Sort((p1, p2) => p1.Value-p2.Value);
+            listTypes.Sort((p1, p2) => p1.Value - p2.Value);
             pairings = new Dictionary<ushort, ushort>() { };
             string log = "";
-            for(int i = 0; i < types.Count; i++) {
-                pairings.Add(listTypes[i].Key, listTypes[types.Count-i-1].Key);
-                log+=$"( {listTypes[i]}, {listTypes[types.Count-i-1]}) ";
+            for (int i = 0; i < types.Count; i++) {
+                pairings.Add(listTypes[i].Key, listTypes[types.Count - i - 1].Key);
+                log += $"( {listTypes[i]}, {listTypes[types.Count - i - 1]}) ";
             }
-            for(int i = 0; i < invalidTypes.Count; i++) {
-                if(!pairings.ContainsKey(invalidTypes[i]))pairings.Add(invalidTypes[i], invalidTypes[i]);
+            for (int i = 0; i < invalidTypes.Count; i++) {
+                if (!pairings.ContainsKey(invalidTypes[i])) pairings.Add(invalidTypes[i], invalidTypes[i]);
             }
-            WorldTwists.Instance.Logger.Info("Invert: Inverted "+log);
-            for(int y = 0; y < Main.maxTilesY; y++) {
-                for(int x = 0; x < Main.maxTilesX; x++) {
+            WorldTwists.Instance.Logger.Info("Invert: Inverted " + log);
+            for (int y = 0; y < Main.maxTilesY; y++) {
+                for (int x = 0; x < Main.maxTilesX; x++) {
                     try {
-                        if(Main.tile[x, y].active()&&TwistExt.Solid(Main.tile[x, y].type))
+                        if (Main.tile[x, y].active() && TwistExt.Solid(Main.tile[x, y].type))
                             Main.tile[x, y].type = pairings[Main.tile[x, y].type];
-                        if(Main.tileCut[Main.tile[x, y].type])
+                        if (Main.tileCut[Main.tile[x, y].type])
                             Main.tile[x, y].active(false);
-                    } catch(Exception e) {
-                        WorldTwists.Instance.Logger.Info("Randomize: Ran into issue randomizing "+Main.tile[x, y].type);
+                    } catch (Exception e) {
+                        WorldTwists.Instance.Logger.Info("Randomize: Ran into issue randomizing " + Main.tile[x, y].type);
                         throw e;
                     }
                 }
             }
-        }
-        public static void GreatEnsmallener(GenerationProgress progress) {
-            progress.Message = "Ensmallening";
+        };
+        public static WorldGenLegacyMethod GreatEnsmallener(TwistConfig twistConfig) => (GenerationProgress progress) => {
+            if (progress is GenerationProgress) progress.Message = "Ensmallening";
             int width = Main.maxTilesX;
             int height = Main.maxTilesY;
-            int halfX = width/2;
-            int halfY = height/2;
+            int halfX = width / 2;
+            int halfY = height / 2;
             int x, y;
-            Tile[,] tiles = new Tile[Main.tile.GetLength(0),Main.tile.GetLength(1)];
-            for(int y1 = 0; y1 < height; y1++) {
-                for(int x1 = 0; x1 < width; x1++) {
-                    x = x1/2+((x1%2)*halfX);
-                    y = y1/2+((y1%2)*halfY);
-                    tiles[x,y] = Main.tile[x1, y1];
+            Tile[,] tiles = new Tile[Main.tile.GetLength(0), Main.tile.GetLength(1)];
+            for (int y1 = 0; y1 < height; y1++) {
+                for (int x1 = 0; x1 < width; x1++) {
+                    x = x1 / 2 + ((x1 % 2) * halfX);
+                    y = y1 / 2 + ((y1 % 2) * halfY);
+                    tiles[x, y] = Main.tile[x1, y1];
                 }
             }
-            for(int y2 = 0; y2 < height; y2++) {
-                for(int x2 = 0; x2 < width; x2++) {
+            for (int y2 = 0; y2 < height; y2++) {
+                for (int x2 = 0; x2 < width; x2++) {
                     Main.tile[x2, y2] = tiles[x2, y2];
                 }
             }
             Chest c;
             Tile chestTile;
             //Tile[,] chestTiles = new Tile[3,3];
-            for(int i = 0; i < Main.chest.Length; i++) {
+            for (int i = 0; i < Main.chest.Length; i++) {
                 c = Main.chest[i];
-                if(c is null) {
+                if (c is null) {
                     continue;
                 }
-                c.x = c.x/2+((c.x%2)*halfX);
-                c.y = c.y/2+((c.y%2)*halfY);
+                c.x = c.x / 2 + ((c.x % 2) * halfX);
+                c.y = c.y / 2 + ((c.y % 2) * halfY);
                 chestTile = Main.tile[c.x, c.y];
                 c.y--;
                 /*chestTiles = new Tile[3, 3];
@@ -606,37 +648,37 @@ namespace WorldTwists {
                 }*/
                 try {
                     MultiTileUtils.AggressivelyPlace(new Point(c.x, c.y), chestTile.type, chestTile.frameX / MultiTileUtils.GetStyleWidth(chestTile.type));
-                } catch(Exception e) {
+                } catch (Exception e) {
                     WorldTwists.Instance.Logger.Warn(e);
                     Exception _ = e;
                 }
             }
             Main.spawnTileX = (Main.spawnTileX / 2) + WorldGen.genRand.Next(2) * halfX;
-            Main.spawnTileY = (Main.spawnTileY / 2) + (WorldGen.genRand.Next(2) + TwistConfig.Instance.HipsterSpawnSkew>0 ? halfY : 0);
+            Main.spawnTileY = (Main.spawnTileY / 2) + (WorldGen.genRand.Next(2) + twistConfig.HipsterSpawnSkew > 0 ? halfY : 0);
             Main.dungeonX = (Main.dungeonX / 2) + WorldGen.genRand.Next(2) * halfX;
             Main.dungeonY = (Main.dungeonY / 2);
             int npci;
-            for(npci = 0;npci<Main.npc.Length;npci++) {
-	            if(Main.npc[npci].type==NPCID.OldMan) {
-		            break;
-	            }
+            for (npci = 0; npci < Main.npc.Length; npci++) {
+                if (Main.npc[npci].type == NPCID.OldMan) {
+                    break;
+                }
             }
-            if(npci<201) {
-                Main.npc[npci].position = new Vector2(Main.dungeonX,Main.dungeonY)*16;
+            if (npci < 201) {
+                Main.npc[npci].position = new Vector2(Main.dungeonX, Main.dungeonY) * 16;
             }
-            for(npci = 0;npci<Main.npc.Length;npci++) {
-	            if(Main.npc[npci].type==NPCID.Guide) {
-		            break;
-	            }
+            for (npci = 0; npci < Main.npc.Length; npci++) {
+                if (Main.npc[npci].type == NPCID.Guide) {
+                    break;
+                }
             }
-            if(npci<201) {
-                Main.npc[npci].position.X = Main.npc[npci].position.X + (WorldGen.genRand.Next(2) * halfX*16);
+            if (npci < 201) {
+                Main.npc[npci].position.X = Main.npc[npci].position.X + (WorldGen.genRand.Next(2) * halfX * 16);
                 Main.npc[npci].position.Y = Main.spawnTileY;
             }
             smol = true;
-        }
+        };
         public static void Flipper(GenerationProgress progress) {
-            progress.Message = "Flipping";
+            if (progress is GenerationProgress) progress.Message = "Flipping";
             int width = Main.maxTilesX;
             int height = Main.maxTilesY;
             int halfX = width/2;
@@ -694,7 +736,7 @@ namespace WorldTwists {
                 }
             }
             //Main.spawnTileX = (Main.spawnTileX / 2) + WorldGen.genRand.Next(2) * halfX;
-            //Main.spawnTileY = Main.maxTilesY - Main.spawnTileY;//(Main.spawnTileY / 2) + (WorldGen.genRand.Next(2) + TwistConfig.Instance.HipsterSpawnSkew>0 ? halfY : 0);
+            //Main.spawnTileY = Main.maxTilesY - Main.spawnTileY;//(Main.spawnTileY / 2) + (WorldGen.genRand.Next(2) + twistConfig.HipsterSpawnSkew>0 ? halfY : 0);
             //Main.dungeonX = (Main.dungeonX / 2) + WorldGen.genRand.Next(2) * halfX;
             //Main.dungeonY = (Main.dungeonY / 2);
             int npci;
@@ -716,7 +758,7 @@ namespace WorldTwists {
             }
         }
         public static void HMLooter(GenerationProgress progress) {
-            progress.Message = "Starting Hardmode";
+            if (progress is GenerationProgress) progress.Message = "Starting Hardmode";
             Item[] items = Main.item;
             Main.item = new Item[Main.maxItems+1].Select((v)=>new Item()).ToArray();
 
@@ -789,16 +831,16 @@ namespace WorldTwists {
                 }
             }
         }
-        public static void Minefield(GenerationProgress progress) {
-            progress.Message = "Placing Landmines";
+        public static WorldGenLegacyMethod Minefield(TwistConfig twistConfig) => (GenerationProgress progress) => {
+            if (progress is GenerationProgress) progress.Message = "Placing Landmines";
             Tile tile;
             Tile tileBelow;
-            float dord = TwistConfig.Instance.Minefield;
-            for(int y = 0; y < Main.maxTilesY-1; y++) {
-                for(int x = 0; x < Main.maxTilesX; x++) {
+            float dord = twistConfig.Minefield;
+            for (int y = 0; y < Main.maxTilesY - 1; y++) {
+                for (int x = 0; x < Main.maxTilesX; x++) {
                     tile = Main.tile[x, y];
                     tileBelow = Main.tile[x, y + 1];
-                    if(!tile.active() && tileBelow.active() && tileBelow.slope() == 0 && !tileBelow.halfBrick() && Main.tileSolid[tileBelow.type] && (dord==1||WorldGen.genRand.NextFloat()<dord)) {
+                    if (!tile.active() && tileBelow.active() && tileBelow.slope() == 0 && !tileBelow.halfBrick() && Main.tileSolid[tileBelow.type] && (dord == 1 || WorldGen.genRand.NextFloat() < dord)) {
                         tile.ResetToType(TileID.LandMine);
                         //tile.type = TileID.LandMine;
                         tile.color(TwistExt.GetMineColor(tileBelow.type));
@@ -806,11 +848,11 @@ namespace WorldTwists {
                     }
                 }
             }
-        }
-        public static void Painter(GenerationProgress progress) {
-            progress.Message = "Painting it,";
+        };
+        public static WorldGenLegacyMethod Painter(TwistConfig twistConfig) => (GenerationProgress progress) => {
+            if (progress is GenerationProgress) progress.Message = "Painting it,";
             Tile tile;
-            byte color = (byte)TwistConfig.Instance.Paint;
+            byte color = (byte)twistConfig.Paint;
             for(int y = 0; y < Main.maxTilesY-1; y++) {
                 for(int x = 0; x < Main.maxTilesX; x++) {
                     tile = Main.tile[x, y];
@@ -818,30 +860,30 @@ namespace WorldTwists {
                     tile.wallColor(color);
                 }
             }
-        }
-        public static void Switcher(GenerationProgress progress) {
-            progress.Message = "Switcheroo";
+        };
+        public static WorldGenLegacyMethod Switcher(TwistConfig twistConfig) => (GenerationProgress progress) => {
+            if (progress is GenerationProgress) progress.Message = "Switcheroo";
             Tile tile;
             var watch = new System.Diagnostics.Stopwatch();
             watch.Start();
-            for(int y = 0; y < Main.maxTilesY-1; y++) {
-                for(int x = 0; x < Main.maxTilesX; x++) {
+            for (int y = 0; y < Main.maxTilesY - 1; y++) {
+                for (int x = 0; x < Main.maxTilesX; x++) {
                     tile = Main.tile[x, y];
-                    Switch(tile);
+                    Switch(tile, twistConfig);
                     //if(Switch(tile))WorldGen.SquareTileFrame(x,y);
                 }
             }
             watch.Stop();
-            TypeMap[] maps = TwistConfig.Instance.TileMaps;
+            TypeMap[] maps = twistConfig.TileMaps;
             TypeMap map;
-            for(int i = maps.Length; i-- > 0;) {
+            for (int i = maps.Length; i-- > 0;) {
                 map = maps[i];
-                for(int ini = map.input.Length; ini-- > 0;)pairings.Add((ushort)map.input[ini], (ushort)map.output);
+                for (int ini = map.input.Length; ini-- > 0;) pairings.Add((ushort)map.input[ini], (ushort)map.output);
             }
-            WorldTwists.Instance.Logger.Info("Switched tiles in"+watch.Elapsed);
-        }
+            WorldTwists.Instance.Logger.Info("Switched tiles in" + watch.Elapsed);
+        };
         public static void TreeSolidifier(GenerationProgress progress) {
-            progress.Message = "Solidifying Trees";
+            if (progress is GenerationProgress) progress.Message = "Solidifying Trees";
             Tile tile;
             int wood;
             Item item = new Item();
@@ -872,37 +914,37 @@ namespace WorldTwists {
 
             WorldTwists.Instance.Logger.Info($"Solidified trees in {watch.Elapsed} with {fails} failures");
         }
-        public static void Waver(GenerationProgress progress) {
-            progress.Message = "Waving";
-            TwistExt.WaveType waveType = TwistConfig.Instance.WaveType;
-            double wavePeriod = TwistConfig.Instance.WavePeriod;
-            double waveIntensity = TwistConfig.Instance.WaveIntensity;
+        public static WorldGenLegacyMethod Waver(TwistConfig twistConfig) => (GenerationProgress progress) => {
+            if (progress is GenerationProgress) progress.Message = "Waving";
+            TwistExt.WaveType waveType = twistConfig.WaveType;
+            double wavePeriod = twistConfig.WavePeriod;
+            double waveIntensity = twistConfig.WaveIntensity;
             int diff = (int)Math.Ceiling(waveIntensity);
             Tile[,] tiles = new Tile[Main.tile.GetLength(0), Main.tile.GetLength(1)];
-            for(int y1 = 1+diff; y1 < Main.maxTilesY; y1++) {
-                for(int x1 = 0; x1 < Main.maxTilesX; x1++) {
-                    if(Main.tileContainer[Main.tile[x1, y1].type]||Main.tileContainer[Main.tile[x1, y1-1].type]) {
-                        tiles[x1, y1-diff] = Main.tile[x1, y1];
+            for (int y1 = 1 + diff; y1 < Main.maxTilesY; y1++) {
+                for (int x1 = 0; x1 < Main.maxTilesX; x1++) {
+                    if (Main.tileContainer[Main.tile[x1, y1].type] || Main.tileContainer[Main.tile[x1, y1 - 1].type]) {
+                        tiles[x1, y1 - diff] = Main.tile[x1, y1];
                     } else {
                         int y = (y1 - diff) + (int)TwistExt.GetWave(waveType, x1, wavePeriod, waveIntensity);
-                        if(tiles[x1, y] is null)tiles[x1, y] = Main.tile[x1, y1];
+                        if (tiles[x1, y] is null) tiles[x1, y] = Main.tile[x1, y1];
                     }
                 }
             }
-            for(int i = Main.chest.Length; i-->0;) {
-                if(Main.chest[i] is null)continue;
-                Main.chest[i].y-=diff;
+            for (int i = Main.chest.Length; i-- > 0;) {
+                if (Main.chest[i] is null) continue;
+                Main.chest[i].y -= diff;
             }
-            for(int y2 = 0; y2 < Main.maxTilesY; y2++) {
-                for(int x2 = 0; x2 < Main.maxTilesX; x2++) {
-                    if(!(tiles[x2, y2] is null)) Main.tile[x2, y2] = tiles[x2, y2];
-                    else if(!(Main.tile[x2, y2] is null)) Main.tile[x2, y2].active(false);
+            for (int y2 = 0; y2 < Main.maxTilesY; y2++) {
+                for (int x2 = 0; x2 < Main.maxTilesX; x2++) {
+                    if (!(tiles[x2, y2] is null)) Main.tile[x2, y2] = tiles[x2, y2];
+                    else if (!(Main.tile[x2, y2] is null)) Main.tile[x2, y2].active(false);
                     else Main.tile[x2, y2] = new Tile();
                 }
             }
-        }
+        };
         public static void BeeHell(GenerationProgress progress) {
-            progress.Message = "Bee Hell";
+            if (progress is GenerationProgress) progress.Message = "Bee Hell";
             for (int y = Main.maxTilesY - 200; y < Main.maxTilesY; y++) {
                 for (int x = 0; x < Main.maxTilesX; x++) {
                     if (Main.tile[x, y].type == TileID.Ash) {
@@ -911,9 +953,9 @@ namespace WorldTwists {
                 }
             }
         }
-        public static void ShuffledWalls(GenerationProgress progress) {
+        public static WorldGenLegacyMethod ShuffledWalls(TwistConfig twistConfig) => (GenerationProgress progress) => {
             WorldTwists.Instance.Logger.Info("Shuffling Walls");
-            progress.Message = "Shuffling Walls";
+            if (progress is GenerationProgress) progress.Message = "Shuffling Walls";
             //Dictionary<int,int> count
             List<ushort> types = new List<ushort>() { };
             Tile tile;
@@ -925,8 +967,8 @@ namespace WorldTwists {
             }
             List<ushort> shuffledTypes = types.ToList();
             //WorldTwists.Instance.Logger.Info("Randomize: Shuffled "+WorldGen.genRand.);
-            bool UseWorldSeed = TwistConfig.Instance.UseWorldSeed;
-            bool UseComplexSeed = TwistConfig.Instance.UseComplexSeed;
+            bool UseWorldSeed = twistConfig.UseWorldSeed;
+            bool UseComplexSeed = twistConfig.UseComplexSeed;
             WorldTwists.Instance.Logger.Info($"Shuffle: Using settings UseWorldSeed: {UseWorldSeed}; UseComplexSeed: {UseComplexSeed}");
             if (UseWorldSeed) {
                 if (UseComplexSeed) {
@@ -936,17 +978,17 @@ namespace WorldTwists {
                 }
                 shuffledTypes.Shuffle(WorldGen.genRand);
             } else {
-                UnifiedRandom rand = new UnifiedRandom(TwistConfig.Instance.RandomizeSeed);
+                UnifiedRandom rand = new UnifiedRandom(twistConfig.RandomizeSeed);
                 if (UseComplexSeed) {
-                    typeof(UnifiedRandom).GetField("inext", BindingFlags.NonPublic | BindingFlags.Instance).SetValue(rand, TwistConfig.Instance.inext);
-                    typeof(UnifiedRandom).GetField("inextp", BindingFlags.NonPublic | BindingFlags.Instance).SetValue(rand, TwistConfig.Instance.inextp);
-                    typeof(UnifiedRandom).GetField("SeedArray", BindingFlags.NonPublic | BindingFlags.Instance).SetValue(rand, TwistConfig.Instance.SeedArray.ToArray());
+                    typeof(UnifiedRandom).GetField("inext", BindingFlags.NonPublic | BindingFlags.Instance).SetValue(rand, twistConfig.inext);
+                    typeof(UnifiedRandom).GetField("inextp", BindingFlags.NonPublic | BindingFlags.Instance).SetValue(rand, twistConfig.inextp);
+                    typeof(UnifiedRandom).GetField("SeedArray", BindingFlags.NonPublic | BindingFlags.Instance).SetValue(rand, twistConfig.SeedArray.ToArray());
                 }
                 shuffledTypes.Shuffle(rand);
             }
             Dictionary<ushort, ushort>  wallPairings = new Dictionary<ushort, ushort>() { };
             string log = "";
-            if (!TwistConfig.Instance.ShuffledAirWalls) {
+            if (!twistConfig.ShuffledAirWalls) {
                 wallPairings.Add(WallID.None, WallID.None);
                 types.Remove(WallID.None);
             }
@@ -965,9 +1007,9 @@ namespace WorldTwists {
                     }
                 }
             }
-        }
+        };
         public static WorldGenLegacyMethod Shear(int mult) => (GenerationProgress progress) => {
-            progress.Message = "Shearing";
+            if (progress is GenerationProgress) progress.Message = "Shearing";
             int oobtiles = Main.offLimitBorderTiles;
             int width = Main.maxTilesX;
             int height = Main.maxTilesY;
@@ -1037,8 +1079,21 @@ namespace WorldTwists {
             set { if(!(value is null)) ModContent.GetInstance<TwistWorld>()._pairings = value; }
         }
 
-        public static bool Switch(Tile tile) {
-            TypeMap[] maps = TwistConfig.Instance.TileMaps;
+        private HashSet<int> _bossKills;
+        public static HashSet<int> bossKills {
+            get {
+                HashSet<int> value = ModContent.GetInstance<TwistWorld>()?._bossKills;
+                if (value is HashSet<int>) {
+                    return value;
+                }
+                return ModContent.GetInstance<TwistWorld>()._bossKills = new HashSet<int>();
+            }
+            set {
+                if (value is HashSet<int>) ModContent.GetInstance<TwistWorld>()._bossKills = value;
+            }
+        }
+        public static bool Switch(Tile tile, TwistConfig twistConfig) {
+            TypeMap[] maps = twistConfig.TileMaps;
             TypeMap current;
             int temp = tile.active()?tile.type:-1;
             bool reframe = false;
@@ -1060,7 +1115,7 @@ namespace WorldTwists {
                 tile.active(false);
             }
 
-            maps = TwistConfig.Instance.WallMaps;
+            maps = twistConfig.WallMaps;
             for(int i = 0; i < maps.Length; i++) {
                 current = maps[i];
                 if(current.input.Contains(tile.wall)!=current.inverted) {
@@ -1070,8 +1125,6 @@ namespace WorldTwists {
             }
             return reframe;
         }
-
-
         public override TagCompound Save() {
             TagCompound tag = new TagCompound();
             try {
@@ -1080,6 +1133,9 @@ namespace WorldTwists {
                     tag.Add("pairingKeys", pairings.Keys.ToList());
                     tag.Add("pairingValues", pairings.Values.ToList());
                 }
+                if (_bossKills is HashSet<int>) {
+                    tag.Add("bossKills", _bossKills.ToList());
+                }
             } catch(Exception) {}
             return tag;
         }
@@ -1087,10 +1143,14 @@ namespace WorldTwists {
             try {
                 if(tag.ContainsKey("smol"))smol = tag.GetBool("smol");
                 pairings = new Dictionary<ushort, ushort>() { };
-                if(!tag.ContainsKey("pairingKeys")||!tag.ContainsKey("pairingValues"))return;
-                List<ushort> keys = tag.Get<List<ushort>>("pairingKeys");
-                List<ushort> values = tag.Get<List<ushort>>("pairingValues");
-                pairings = keys.Zip(values, (k, v) => new { Key = k, Value = v }).ToDictionary(x => x.Key, x => x.Value);
+                if (tag.ContainsKey("pairingKeys") && tag.ContainsKey("pairingValues")) {
+                    List<ushort> keys = tag.Get<List<ushort>>("pairingKeys");
+                    List<ushort> values = tag.Get<List<ushort>>("pairingValues");
+                    pairings = keys.Zip(values, (k, v) => new { Key = k, Value = v }).ToDictionary(x => x.Key, x => x.Value);
+                }
+                if (tag.ContainsKey("bossKills")) {
+                    _bossKills = tag.Get<List<int>>("bossKills").ToIntSet();
+                }
             } catch(Exception) {}
         }
         public override void TileCountsAvailable(int[] tileCounts) {
@@ -1113,14 +1173,32 @@ namespace WorldTwists {
         private void addTilePairing(ref int count, ushort id, int[] tileCounts) {
             if(pairings.ContainsKey(id)) count+=tileCounts[pairings[id]];
         }
-
-
         private bool oldDayTime;
         public override void PostUpdate() {
             if(smol&&Main.dayTime!=oldDayTime&&!NPC.downedBoss3&&NPC.CountNPCS(NPCID.OldMan)<1) {
                 NPC.NewNPC(Main.dungeonX*16,Main.dungeonY*16,NPCID.OldMan);
             }
             oldDayTime = Main.dayTime;
+        }
+    }
+    public class TwistGlobalNPC : GlobalNPC {
+        public override void NPCLoot(NPC npc) {
+            if (npc.boss && Main.netMode != NetmodeID.MultiplayerClient) {
+                if (RetwistConfig.Instance.TrackKillBoss) {
+                    if (!TwistWorld.bossKills.Contains(npc.type) && npc.type != NPCID.WallofFlesh) {
+                        ThreadPool.QueueUserWorkItem(BossKillCallback, 1);
+                    }
+                } else {
+                    ThreadPool.QueueUserWorkItem(BossKillCallback, 1);
+                }
+            }
+        }
+        public static void BossKillCallback(object threadContext) {
+            List<GenPass> tasks = new List<GenPass>();
+            TwistWorld.AddGenTasks(RetwistConfig.Instance.KillBoss, tasks);
+            foreach (GenPass item in tasks) {
+                item.Apply(null);
+            }
         }
     }
     public static class TwistExt {
@@ -1568,6 +1646,13 @@ rand.NextString("aaaaa","alaaa","aaala","alala"),
                 return (Math.Sin(position * Math.PI / length) + 1)*multiplier/2;
             }
             return 0;
+        }
+        public static HashSet<int> ToIntSet(this List<int> list) {
+            HashSet<int> output = new HashSet<int>();
+            for (int i = list.Count - 1; i >= 0; --i) {
+                output.Add(list[i]);
+            }
+            return output;
         }
     }
     public enum PaintEnum {
