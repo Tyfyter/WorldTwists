@@ -1,4 +1,4 @@
 displayName = World Twists
 author = Tyfyter2002
-version = 0.8
+version = 0.8.1
 homepage = https://tyfyter.github.io/

@@ -14,6 +14,7 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using Terraria;
 using Terraria.Achievements;
+using Terraria.DataStructures;
 using Terraria.GameContent.Generation;
 using Terraria.ID;
 using Terraria.ModLoader;
@@ -1196,6 +1197,20 @@ namespace WorldTwists {
         public static void BossKillCallback(object threadContext) {
             List<GenPass> tasks = new List<GenPass>();
             TwistWorld.AddGenTasks(RetwistConfig.Instance.KillBoss, tasks);
+            foreach (GenPass item in tasks) {
+                item.Apply(null);
+            }
+        }
+    }
+    public class TwistPlayer : ModPlayer {
+        public override void Kill(double damage, int hitDirection, bool pvp, PlayerDeathReason damageSource) {
+            if (Main.netMode != NetmodeID.MultiplayerClient) { 
+                ThreadPool.QueueUserWorkItem(PlayerDeathCallback, 1);
+            }
+        }
+        public static void PlayerDeathCallback(object threadContext) {
+            List<GenPass> tasks = new List<GenPass>();
+            TwistWorld.AddGenTasks(RetwistConfig.Instance.PlayerDeath, tasks);
             foreach (GenPass item in tasks) {
                 item.Apply(null);
             }
