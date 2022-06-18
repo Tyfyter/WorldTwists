@@ -1,0 +1,18 @@
+﻿Shuffled Blocks: 0.9.1
+Shuffled Walls: 0.9.1
+Randomized Blocks: 
+Invert Block Rarity: 0.9.1
+Shear: 0.9.1
+Remapper:
+Wave: 0.9.1
+Liquid Cycling: 0.9.1
+Flipped World: 0.9.1
+Hardmode Start: 0.9.1
+Hardmode Start WoF loot: 0.9.1
+Minefield: 0.9.1
+Paint It,: 0.9.1
+Solidify Trees: 0.9.1
+More WorldGen: 0.9.1
+2 Evils: 0.9.1
+Bee Hell: 0.9.1
+Maintain Biomes: 0.9.1

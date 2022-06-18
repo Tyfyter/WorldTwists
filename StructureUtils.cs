@@ -1,1 +1,1 @@
-../../references/CSLibs/StructureUtils.cs
+../../CSLibs/StructureUtils.cs
