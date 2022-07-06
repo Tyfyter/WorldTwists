@@ -12,6 +12,7 @@ using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Text.RegularExpressions;
 using System.Threading;
 using Terraria;
 using Terraria.Achievements;
@@ -24,6 +25,7 @@ using Terraria.ModLoader.Config;
 using Terraria.ModLoader.Config.UI;
 using Terraria.ModLoader.Default;
 using Terraria.ModLoader.IO;
+using Terraria.ObjectData;
 using Terraria.UI;
 using Terraria.Utilities;
 using Terraria.WorldBuilding;
@@ -134,7 +136,7 @@ namespace WorldTwists {
         [Header("Shear")]
 
         [Label("Shear")]
-        [DefaultValue(0)]
+        [DefaultValue(0.0f)]
         [Increment(0.25f)]
         [Range(-20f, 20f)]
         public float Shear = 0;
@@ -215,7 +217,7 @@ namespace WorldTwists {
         public bool HMPyramid { get; set; } = false;
 
         [Label("Minefield")]
-        [DefaultValue(0)]
+        [DefaultValue(0.0f)]
         [Tooltip("Density of landmines")]
         [Range(0, 1)]
         public float MinefieldDensity {
@@ -323,7 +325,9 @@ namespace WorldTwists {
     }
     public class TwistWorld : ModSystem {
         public override void ModifyWorldGenTasks(List<GenPass> tasks, ref float totalWeight) {
+            WorldTwists.Instance.Logger.Info("adding worldgen tasks with config:\n" + new Regex("\"SeedArrayList\":\\s*\\[(\\s*0,)+\\s*0\\s*\\]").Replace(JsonConvert.SerializeObject(TwistConfig.Instance, ConfigManager.serializerSettings), ""));
             AddGenTasks(TwistConfig.Instance, tasks);
+            WorldTwists.Instance.Logger.Info("added worldgen tasks:\n" + string.Join(", ", tasks.Select(t => t.Name)));
         }
         public override void ModifyHardmodeTasks(List<GenPass> tasks) {
             if(RetwistConfig.Instance.TrackKillBoss) AddGenTasks(RetwistConfig.Instance.KillWOF, tasks);
@@ -400,7 +404,6 @@ namespace WorldTwists {
             if (twistConfig.ShuffledWalls) tasks.Add(new PassLegacy("WallShuffle", ShuffledWalls(twistConfig)));
             if (twistConfig.Paint > 0)
                 tasks.Add(new PassLegacy("Painting it,", Painter(twistConfig)));
-
         }
         public static WorldGenLegacyMethod LiquidCycle(TwistConfig twistConfig) => (GenerationProgress progress, GameConfiguration configuration) => {
             Tile tile;
@@ -706,8 +709,6 @@ namespace WorldTwists {
             int y;
             int debX = -1;
             TileData[,] tiles = new TileData[Main.tile.Width,Main.tile.Height];
-            Stopwatch stopwatch = new();
-            stopwatch.Start();
             for(int y1 = 0; y1 < height; y1++) {
                 for(int x = 0; x < width; x++) {
                     y = Main.maxTilesY - y1;
@@ -731,7 +732,6 @@ namespace WorldTwists {
                 y = y1;
             }
             debX = -1;
-            stopwatch.Restart();
             for (int y2 = 0; y2 < height; y2++) {
                 for(int x2 = 0; x2 < width; x2++) {
                     Main.tile[x2, y2].SetTileData(tiles[x2, y2]);
@@ -756,7 +756,9 @@ namespace WorldTwists {
                     }
                 }*/
                 try {
-                    MultiTileUtils.AggressivelyPlace(new Point(c.x, c.y), chestTile.TileType, chestTile.TileFrameX / MultiTileUtils.GetStyleWidth(chestTile.TileType));
+                    int styleWidth = MultiTileUtils.GetStyleWidth(chestTile.TileType);
+                    int style = styleWidth != 0 ? chestTile.TileFrameX / styleWidth : 0;
+                    if (TileObjectData.GetTileData(chestTile.TileType, style) is not null) MultiTileUtils.AggressivelyPlace(new Point(c.x, c.y), chestTile.TileType, style);
                 } catch(Exception e) {
                     WorldTwists.Instance.Logger.Warn(e);
                     Exception _ = e;
