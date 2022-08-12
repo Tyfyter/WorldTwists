@@ -255,6 +255,16 @@ namespace WorldTwists {
         public bool BeeHell { get; set; } = false;
         #endregion
 
+        #region secret seeds
+
+        [Header("Secret Seeds")]
+
+        [Label("Pre-Generation Secret Seeds")]
+        public SecretSeedConfig preGeneration;
+        [Label("Post-Generation Secret Seeds")]
+        public SecretSeedConfig postGeneration;
+        #endregion
+
         #region universal
         [Header("Universal")]
 
@@ -322,6 +332,21 @@ namespace WorldTwists {
         public TwistConfig PlayerDeath;
         //[Label("Achievement")]
         //public TwistConfig Achievement;
+    }
+    public class SecretSeedConfig : ModConfig {
+        public override bool Autoload(ref string name) => false;
+        public override ConfigScope Mode => ConfigScope.ServerSide;
+        [Label("Drunk World")]
+        public OnOffNeutralEnum DrunkWorld;
+        [Label("Not The Bees")]
+        [Tooltip("Incompatible with some other secret seeds")]
+        public OnOffNeutralEnum BeeWorld;
+        [Label("For The Worthy")]
+        public OnOffNeutralEnum GitGudWorld;
+        [Label("Celebrationmk10")]
+        public OnOffNeutralEnum AniversaryWorld;
+        [Label("The Constant")]
+        public OnOffNeutralEnum DSTWorld;
     }
     public class TwistWorld : ModSystem {
         public override void ModifyWorldGenTasks(List<GenPass> tasks, ref float totalWeight) {
@@ -475,7 +500,7 @@ namespace WorldTwists {
             string log = "";
             for(int i = 0; i < types.Count; i++) {
                 pairings.Add(types[i], shuffledTypes[i]);
-                log+=$"[ {types[i]} ( {TwistExt.getTileName(types[i])}), {shuffledTypes[i]} ( {TwistExt.getTileName(shuffledTypes[i])})] ";
+                log+=$"[ {types[i]} ( {TwistExt.GetTileName(types[i])}), {shuffledTypes[i]} ( {TwistExt.GetTileName(shuffledTypes[i])})] ";
             }
             //TileID.Sets.Falling
             for(int i = 0; i < invalidTypes.Count; i++) {
@@ -1042,7 +1067,7 @@ namespace WorldTwists {
             }
             for (int i = 0; i < types.Count; i++) {
                 wallPairings.Add(types[i], shuffledTypes[i]);
-                log += $"[ {types[i]} ( {TwistExt.getTileName(types[i])}), {shuffledTypes[i]} ( {TwistExt.getTileName(shuffledTypes[i])})] ";
+                log += $"[ {types[i]} ( {TwistExt.GetTileName(types[i])}), {shuffledTypes[i]} ( {TwistExt.GetTileName(shuffledTypes[i])})] ";
             }
             WorldTwists.Instance.Logger.Info("Shuffle: Shuffled " + log);
             for (int y = 0; y < Main.maxTilesY; y++) {
@@ -1243,7 +1268,13 @@ namespace WorldTwists {
             }
             oldDayTime = Main.dayTime;
         }
-    }
+		public override void PreWorldGen() {
+            TwistExt.ApplySecretSeeds(TwistConfig.Instance.preGeneration);
+		}
+		public override void PostWorldGen() {
+            TwistExt.ApplySecretSeeds(TwistConfig.Instance.postGeneration);
+        }
+	}
     public class TwistGlobalNPC : GlobalNPC {
         public override void OnKill(NPC npc) {
             if (npc.boss && Main.netMode != NetmodeID.MultiplayerClient) {
@@ -1297,7 +1328,7 @@ namespace WorldTwists {
         public static bool Solid(int type) {
             return Main.tileSolid[type] && (TwistConfig.Instance.RandomizePlatforms || !Main.tileSolidTop[type]);
         }
-        public static string getTileName(int type) {
+        public static string GetTileName(int type) {
             return type<TileID.Count ? TileID.Search.GetName(type) : TileLoader.GetTile(type).Name;
         }
         public static byte GetMineColor(ushort tileType, UnifiedRandom random = null) {
@@ -1730,6 +1761,48 @@ rand.NextString("aaaaa","alaaa","aaala","alala"),
             }
             return output;
         }
+        public static void ApplySecretSeeds(SecretSeedConfig config) {
+			switch (config.DrunkWorld) {
+                case OnOffNeutralEnum.ON:
+                WorldGen.drunkWorldGen = Main.drunkWorld = true;
+                break;
+                case OnOffNeutralEnum.OFF:
+                WorldGen.drunkWorldGen = Main.drunkWorld = false;
+                break;
+            }
+            switch (config.BeeWorld) {
+                case OnOffNeutralEnum.ON:
+                WorldGen.notTheBees = Main.notTheBeesWorld = true;
+                break;
+                case OnOffNeutralEnum.OFF:
+                WorldGen.notTheBees = Main.notTheBeesWorld = false;
+                break;
+            }
+            switch (config.GitGudWorld) {
+                case OnOffNeutralEnum.ON:
+                WorldGen.getGoodWorldGen = Main.getGoodWorld = true;
+                break;
+                case OnOffNeutralEnum.OFF:
+                WorldGen.getGoodWorldGen = Main.getGoodWorld = false;
+                break;
+            }
+            switch (config.AniversaryWorld) {
+                case OnOffNeutralEnum.ON:
+                WorldGen.tenthAnniversaryWorldGen = Main.tenthAnniversaryWorld = true;
+                break;
+                case OnOffNeutralEnum.OFF:
+                WorldGen.tenthAnniversaryWorldGen = Main.tenthAnniversaryWorld = false;
+                break;
+            }
+            switch (config.DrunkWorld) {
+                case OnOffNeutralEnum.ON:
+                WorldGen.dontStarveWorldGen = Main.dontStarveWorld = true;
+                break;
+                case OnOffNeutralEnum.OFF:
+                WorldGen.dontStarveWorldGen = Main.dontStarveWorld = false;
+                break;
+            }
+        }
     }
     public enum PaintEnum {
         None = 0,
@@ -1764,6 +1837,11 @@ rand.NextString("aaaaa","alaaa","aaala","alala"),
         Shadow = 29,
         Negative = 30,
     }
+    public enum OnOffNeutralEnum : sbyte {
+        OFF = -1,
+        NO_CHANGE = 0,
+        ON = 1
+	}
 	[BackgroundColor(99, 111, 153)]
     public class TypeMap {
         public int[] input;
