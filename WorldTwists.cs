@@ -2,6 +2,7 @@ using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;
+using ReLogic.Content;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -12,12 +13,17 @@ using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Runtime.Serialization;
 using System.Text.RegularExpressions;
 using System.Threading;
 using Terraria;
 using Terraria.Achievements;
+using Terraria.Audio;
 using Terraria.DataStructures;
+using Terraria.GameContent;
 using Terraria.GameContent.Generation;
+using Terraria.GameContent.UI.Elements;
+using Terraria.GameContent.UI.States;
 using Terraria.ID;
 using Terraria.IO;
 using Terraria.ModLoader;
@@ -253,6 +259,10 @@ namespace WorldTwists {
         [Tooltip("Bee Hell")]
         [DefaultValue(false)]
         public bool BeeHell { get; set; } = false;
+
+        [Label("Skygrids")]
+        [JsonConverter(typeof(SkyGridSettingConverter))]
+        public SkyGridSetting SkyGrids;
         #endregion
 
         #region secret seeds
@@ -418,6 +428,7 @@ namespace WorldTwists {
             if (twistConfig.GreatEnsmallening)
                 tasks.Add(new PassLegacy("Mini Worlds", GreatEnsmallener(twistConfig)));
             if (twistConfig.WavePeriod != 0 && twistConfig.WaveIntensity != 0) tasks.Add(new PassLegacy("Waving", Waver(twistConfig)));
+            if (twistConfig.SkyGrids != default) tasks.Add(new PassLegacy("SkyGrid", Grid(twistConfig)));
             if (twistConfig.Shear != 0) tasks.Add(new PassLegacy("Shear", Shear(twistConfig.Shear)));
             if (twistConfig.Minefield > 0)
                 tasks.Add(new PassLegacy("Placing Landmines", Minefield(twistConfig)));
@@ -1141,6 +1152,20 @@ namespace WorldTwists {
                 }
             }
         };
+        public static WorldGenLegacyMethod Grid(TwistConfig twistConfig) => (GenerationProgress progress, GameConfiguration configuration) => {
+            if (progress is GenerationProgress) progress.Message = "Gridifying";
+            int oobtiles = Main.offLimitBorderTiles;
+            int width = Main.maxTilesX;
+            int height = Main.maxTilesY;
+            SkyGridSetting skyGrids = twistConfig.SkyGrids;
+            for (int y = oobtiles; y < height - oobtiles; y++) {
+                for (int x = oobtiles; x < width - oobtiles; x++) {
+					if (!(Main.tile[x, y - 1].LiquidAmount > 0 || TileID.Sets.PreventsTileRemovalIfOnTopOfIt[Main.tile[x, y].TileType]) && !skyGrids.Combine(x, y)) {
+                        WorldGen.KillTile(x, y);
+					}
+                }
+            }
+        };
         public bool _smol = false;
         public static bool smol {
             get => ModContent.GetInstance<TwistWorld>()._smol;
@@ -1762,6 +1787,7 @@ rand.NextString("aaaaa","alaaa","aaala","alala"),
             return output;
         }
         public static void ApplySecretSeeds(SecretSeedConfig config) {
+            if (config is null) return;
 			switch (config.DrunkWorld) {
                 case OnOffNeutralEnum.ON:
                 WorldGen.drunkWorldGen = Main.drunkWorld = true;
@@ -1841,8 +1867,310 @@ rand.NextString("aaaaa","alaaa","aaala","alala"),
         OFF = -1,
         NO_CHANGE = 0,
         ON = 1
-	}
-	[BackgroundColor(99, 111, 153)]
+    }
+	public class SkyGridSetting {
+        public int x;
+        public int y;
+        public SkyGridModeEnum coordCombineMode;
+        public SkyGridModeEnum parentCombineMode;
+        public SkyGridSetting child;
+        public void CombineIn(int x, int y, ref bool value) {
+			if (this.x == 0 || this.y == 0) {
+                return;
+			}
+            bool current = false;
+			switch (coordCombineMode) {
+                case SkyGridModeEnum.OR:
+                current = (x % this.x == 0) || (y % this.y == 0);
+                break;
+                case SkyGridModeEnum.AND:
+                current = (x % this.x == 0) && (y % this.y == 0);
+                break;
+                case SkyGridModeEnum.XOR:
+                current = (x % this.x == 0) ^ (y % this.y == 0);
+                break;
+                case SkyGridModeEnum.XNOR:
+                current = !((x % this.x == 0) ^ (y % this.y == 0));
+                break;
+            }
+            switch (parentCombineMode) {
+                case SkyGridModeEnum.OR:
+                value |= current;
+                break;
+                case SkyGridModeEnum.AND:
+                value &= current;
+                break;
+                case SkyGridModeEnum.XOR:
+                value ^= current;
+                break;
+                case SkyGridModeEnum.XNOR:
+                value ^= !current;
+                break;
+            }
+        }
+        public bool Combine(int x, int y) {
+            bool value = true;
+            SkyGridSetting current = this;
+            while (current is not null) {
+                current.CombineIn(x, y, ref value);
+                current = current.child;
+            }
+            return value;
+        }
+    }
+	public enum SkyGridModeEnum : sbyte {
+        OR = 0,
+        AND = 1,
+        XOR = 2,
+        XNOR = 3
+    }
+	public class SkyGridSettingConverter : JsonConverter {
+		public override object ReadJson(JsonReader reader, Type objectType, object existingValue, JsonSerializer serializer) {
+            if (!reader.Read()) {
+                return null;
+            }
+            SkyGridSetting value = new SkyGridSetting();
+            while (reader.TokenType == JsonToken.PropertyName) {
+                string name = reader.Value.ToString().ToLower();
+
+                switch (name) {
+                    case "x":
+                    if (int.TryParse(reader.ReadAsString(), out int x)) value.x = x;
+                    break;
+                    case "y":
+                    if (int.TryParse(reader.ReadAsString(), out int y)) value.y = y;
+                    break;
+                    case "coordcombinemode":
+                    if(Enum.TryParse(reader.ReadAsString(), out SkyGridModeEnum coordCombineMode))value.coordCombineMode = coordCombineMode;
+                    break;
+                    case "parentcombinemode":
+                    if (Enum.TryParse(reader.ReadAsString(), out SkyGridModeEnum parentCombineMode)) value.parentCombineMode = parentCombineMode;
+                    break;
+                    case "child":
+                    reader.Read();
+                    if (reader.TokenType == JsonToken.StartObject) {
+                        value.child = (SkyGridSetting)ReadJson(reader, objectType, existingValue, serializer);
+					}
+                    break;
+                    default:
+                    reader.Skip();
+                    break;
+                }
+                reader.Read();
+            }
+            return value;
+        }
+
+		public override void WriteJson(JsonWriter writer, object value, JsonSerializer serializer) {
+            SkyGridSetting val = (SkyGridSetting)value;
+            writer.WriteStartObject();
+            writer.WritePropertyName("x");
+            writer.WriteValue(val.x);
+            writer.WritePropertyName("y");
+            writer.WriteValue(val.y);
+            writer.WritePropertyName("coordCombineMode");
+            writer.WriteValue(Enum.GetName(val.coordCombineMode));
+            writer.WritePropertyName("parentCombineMode");
+            writer.WriteValue(Enum.GetName(val.parentCombineMode));
+			if (val.child is SkyGridSetting child) {
+                writer.WritePropertyName("child");
+                WriteJson(writer, child, serializer);
+            }
+            writer.WriteEndObject();
+        }
+        public override bool CanConvert(Type objectType) {
+            return objectType == typeof(SkyGridSetting);
+        }
+    }
+    /*internal class ObjectElement : ConfigElement<object> {
+        private readonly bool ignoreSeparatePage;
+
+        private bool separatePage;
+
+        private bool pendingChanges;
+
+        private bool expanded = true;
+
+        private NestedUIList dataList;
+
+        private UIModConfigHoverImage initializeButton;
+
+        private UIModConfigHoverImage deleteButton;
+
+        private UIModConfigHoverImage expandButton;
+
+        private UIPanel separatePagePanel;
+
+        private UITextPanel<FuncStringWrapper> separatePageButton;
+
+        protected Func<string> AbridgedTextDisplayFunction { get; set; }
+
+        public ObjectElement(bool ignoreSeparatePage = false) {
+            this.ignoreSeparatePage = ignoreSeparatePage;
+        }
+
+        public override void OnBind() {
+            base.OnBind();
+            if (base.List != null) {
+                MethodInfo methodInfo = base.MemberInfo.Type.GetGenericArguments()[0].GetMethod("ToString", Array.Empty<Type>());
+                if (methodInfo != null && methodInfo.DeclaringType != typeof(object)) {
+                    base.TextDisplayFunction = () => base.Index + 1 + ": " + (base.List[base.Index]?.ToString() ?? "null");
+                    AbridgedTextDisplayFunction = () => base.List[base.Index]?.ToString() ?? "null";
+                } else {
+                    base.TextDisplayFunction = () => base.Index + 1 + ": ";
+                }
+            } else if (base.MemberInfo.Type.GetMethod("ToString", Array.Empty<Type>())!.DeclaringType != typeof(object)) {
+                base.TextDisplayFunction = () => ((LabelAttribute == null) ? base.MemberInfo.Name : LabelAttribute.Label) + ((Value == null) ? "" : (": " + Value.ToString()));
+                AbridgedTextDisplayFunction = () => Value?.ToString() ?? "";
+            }
+            if (Value == null && base.List != null) {
+                object data = Activator.CreateInstance(base.MemberInfo.Type);
+                JsonConvert.PopulateObject(JsonDefaultValueAttribute?.Json ?? "{}", data, ConfigManager.serializerSettings);
+                Value = data;
+            }
+            dataList = new NestedUIList();
+            dataList.Width.Set(-14f, 1f);
+            dataList.Left.Set(14f, 0f);
+            dataList.Height.Set(-30f, 1f);
+            dataList.Top.Set(30f, 0f);
+            dataList.ListPadding = 5f;
+            Append(dataList);
+            _ = base.List;
+            initializeButton = new UIModConfigHoverImage(base.PlayTexture, "Initialize");
+            initializeButton.Top.Pixels += 4f;
+            initializeButton.Left.Pixels -= 3f;
+            initializeButton.HAlign = 1f;
+            initializeButton.OnClick += delegate
+            {
+                SoundEngine.PlaySound(SoundID.MenuTick);
+                object obj = Activator.CreateInstance(base.MemberInfo.Type);
+                JsonConvert.PopulateObject(JsonDefaultValueAttribute?.Json ?? "{}", obj, ConfigManager.serializerSettings);
+                Value = obj;
+                pendingChanges = true;
+                SetupList();
+                Interface.modConfig.RecalculateChildren();
+                Interface.modConfig.SetPendingChanges();
+            };
+            expandButton = new UIModConfigHoverImage(base.ExpandedTexture, "Expand");
+            expandButton.Top.Set(4f, 0f);
+            expandButton.Left.Set(-52f, 1f);
+            expandButton.OnClick += delegate
+            {
+                expanded = !expanded;
+                pendingChanges = true;
+            };
+            deleteButton = new UIModConfigHoverImage(base.DeleteTexture, "Clear");
+            deleteButton.Top.Set(4f, 0f);
+            deleteButton.Left.Set(-25f, 1f);
+            deleteButton.OnClick += delegate
+            {
+                Value = null;
+                pendingChanges = true;
+                SetupList();
+                Interface.modConfig.SetPendingChanges();
+            };
+            if (Value != null) {
+                SetupList();
+            } else {
+                Append(initializeButton);
+            }
+            pendingChanges = true;
+            Recalculate();
+        }
+
+        public override void Update(GameTime gameTime) {
+            base.Update(gameTime);
+            if (!pendingChanges) {
+                return;
+            }
+            pendingChanges = false;
+            base.DrawLabel = !separatePage || ignoreSeparatePage;
+            RemoveChild(deleteButton);
+            RemoveChild(expandButton);
+            RemoveChild(initializeButton);
+            RemoveChild(dataList);
+            if (separatePage && !ignoreSeparatePage) {
+                RemoveChild(separatePageButton);
+            }
+            if (Value == null) {
+                Append(initializeButton);
+                base.DrawLabel = true;
+                return;
+            }
+            if (base.List == null && (!separatePage || !ignoreSeparatePage) && base.NullAllowed) {
+                Append(deleteButton);
+            }
+            if (!separatePage || ignoreSeparatePage) {
+                if (!ignoreSeparatePage) {
+                    Append(expandButton);
+                }
+                if (expanded) {
+                    Append(dataList);
+                    expandButton.HoverText = "Collapse";
+                    expandButton.SetImage(base.ExpandedTexture);
+                } else {
+                    RemoveChild(dataList);
+                    expandButton.HoverText = "Expand";
+                    expandButton.SetImage(base.CollapsedTexture);
+                }
+            } else {
+                Append(separatePageButton);
+            }
+        }
+
+        private void SetupList() {
+            dataList.Clear();
+            object data = Value;
+            if (data == null) {
+                return;
+            }
+            if (separatePage && !ignoreSeparatePage) {
+                separatePagePanel = UIModConfig.MakeSeparateListPanel(base.Item, data, base.MemberInfo, base.List, base.Index, AbridgedTextDisplayFunction);
+                return;
+            }
+            int order = 0;
+            foreach (PropertyFieldWrapper variable in ConfigManager.GetFieldsAndProperties(data)) {
+                if (!Attribute.IsDefined(variable.MemberInfo, typeof(JsonIgnoreAttribute))) {
+                    int top = 0;
+                    HeaderAttribute header = ConfigManager.GetCustomAttribute<HeaderAttribute>(variable, null, null);
+                    if (header != null) {
+                        PropertyFieldWrapper wrapper = new PropertyFieldWrapper(typeof(HeaderAttribute).GetProperty("Header"));
+                        UIModConfig.WrapIt(dataList, ref top, wrapper, header, order++);
+                    }
+                    Tuple<UIElement, UIElement> wrapped = UIModConfig.WrapIt(dataList, ref top, variable, data, order++);
+                    if (base.List != null) {
+                        wrapped.Item1.Width.Pixels += 20f;
+                    }
+                }
+            }
+        }
+
+        public override void Recalculate() {
+            base.Recalculate();
+            float defaultHeight = (separatePage ? 40 : 30);
+            float h = ((dataList.Parent != null) ? (dataList.GetTotalHeight() + defaultHeight) : defaultHeight);
+            Height.Set(h, 0f);
+            if (base.Parent != null && base.Parent is UISortableElement) {
+                base.Parent.Height.Set(h, 0f);
+            }
+        }
+        internal class UIModConfigHoverImage : UIImage {
+            internal string HoverText;
+
+            public UIModConfigHoverImage(Asset<Texture2D> texture, string hoverText)
+                : base(texture) {
+                HoverText = hoverText;
+            }
+
+            protected override void DrawSelf(SpriteBatch spriteBatch) {
+                base.DrawSelf(spriteBatch);
+                if (base.IsMouseHovering) {
+                    UIModConfig.Tooltip = HoverText;
+                }
+            }
+        }
+    }*/
+    [BackgroundColor(99, 111, 153)]
     public class TypeMap {
         public int[] input;
         public int output;
