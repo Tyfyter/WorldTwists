@@ -47,7 +47,7 @@ namespace WorldTwists {
         public override void Load() {
             if(Instance!=null) Logger.Warn("WorldTwists Instance already loaded at Load()");
             Instance = this;
-            //Main.Achievements.OnAchievementCompleted += OnAchievementCompleted;
+            Main.Achievements.OnAchievementCompleted += OnAchievementCompleted;
             this.AddConfig(typeof(TwistConfig).Name, new TwistConfig());
             this.AddConfig(typeof(RetwistConfig).Name, new RetwistConfig());
         }
@@ -59,7 +59,7 @@ namespace WorldTwists {
         }
         public static void AchievementCallback(object threadContext) {
             List<GenPass> tasks = new List<GenPass>();
-            //TwistWorld.AddGenTasks(RetwistConfig.Instance.Achievement, tasks);
+            TwistWorld.AddGenTasks(RetwistConfig.Instance.Achievement, tasks);
             foreach (GenPass item in tasks) {
                 item.Apply(null, null);
             }
@@ -340,8 +340,8 @@ namespace WorldTwists {
         public TwistConfig KillWOF;
         [Label("Player Death")]
         public TwistConfig PlayerDeath;
-        //[Label("Achievement")]
-        //public TwistConfig Achievement;
+        [Label("Achievement")]
+        public TwistConfig Achievement;
     }
     public class SecretSeedConfig : ModConfig {
         public override bool Autoload(ref string name) => false;
@@ -417,7 +417,8 @@ namespace WorldTwists {
             }
             if (twistConfig.LiquidCycle != 0) {
                 int genIndex = tasks.FindIndex(genpass => genpass.Name.Equals("Settle Liquids Again"));
-                tasks.Insert(genIndex, new PassLegacy("Cycle Liquids", LiquidCycle(twistConfig)));
+				if (genIndex < 0) genIndex = 0;
+				tasks.Insert(genIndex, new PassLegacy("Cycle Liquids", LiquidCycle(twistConfig)));
             }
             if (twistConfig.TreeSolidification)
                 tasks.Add(new PassLegacy("Solidifying Trees", TreeSolidifier));
@@ -1306,6 +1307,7 @@ namespace WorldTwists {
                 if (RetwistConfig.Instance.TrackKillBoss) {
                     if (!TwistWorld.bossKills.Contains(npc.type) && npc.type != NPCID.WallofFlesh) {
                         ThreadPool.QueueUserWorkItem(BossKillCallback, 1);
+						TwistWorld.bossKills.Add(npc.type);
                     }
                 } else {
                     ThreadPool.QueueUserWorkItem(BossKillCallback, 1);
