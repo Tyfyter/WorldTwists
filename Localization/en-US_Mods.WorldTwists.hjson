@@ -1,0 +1,362 @@
+Items: {
+	Debugging_Item: {
+		DisplayName: Debugging Item
+		Tooltip: ""
+	}
+}
+
+Configs: {
+	TwistConfig: {
+		DisplayName: Settings
+
+		Headers: {
+			Shuffled: Shuffled
+			Randomize: Randomize
+			RarityInvert: Rarity Invert
+			Shear: Shear
+			SecretSeeds: Secret Seeds
+			Universal: Universal
+			Remapper: Remapper
+			Waver: Waver
+			OtherChanges: Other Changes
+			RandomizeOrShuffle: Randomize/Shuffle
+		}
+
+		Shuffled: {
+			Label: Shuffled Blocks
+			Tooltip: ""
+		}
+
+		ShuffledWalls: {
+			Label: Shuffled Walls
+			Tooltip: ""
+		}
+
+		ShuffledAirWalls: {
+			Label: Shuffled Walls Include Air
+			Tooltip: ""
+		}
+
+		UseWorldSeed: {
+			Label: Randomized Blocks uses world seed
+			Tooltip: ""
+		}
+
+		RandomizeSeed: {
+			Label: Randomized Blocks seed
+			Tooltip: The seed for Block Randomization, ignored if "Randomized Blocks uses world seed" is on
+		}
+
+		Randomize: {
+			Label: Randomize Blocks
+			Tooltip: ""
+		}
+
+		UseComplexSeed: {
+			Label: Randomized Blocks uses complex seed
+			Tooltip: If "Randomized Blocks uses world seed" is on this outputs the complex seed just before shuffling
+		}
+
+		inext: {
+			Label: Complex seed inext
+			Tooltip: ""
+		}
+
+		inextp: {
+			Label: Complex seed inextp
+			Tooltip: ""
+		}
+
+		Inverted: {
+			Label: Invert Blocks
+			Tooltip: ""
+		}
+
+		Shear: {
+			Label: Shear
+			Tooltip: ""
+		}
+
+		SkyGrids: {
+			Label: Skygrids
+			Tooltip: ""
+		}
+
+		preGeneration: {
+			Label: Pre-Generation Secret Seeds
+			Tooltip: ""
+		}
+
+		postGeneration: {
+			Label: Post-Generation Secret Seeds
+			Tooltip: ""
+		}
+
+		JankLoot: {
+			Label: Janky Door Loot
+			Tooltip: ""
+		}
+
+		RandomizePlatforms: {
+			Label: Include platforms
+			Tooltip: ""
+		}
+
+		RandomizeBoulders: {
+			Label: Include Unstable Blocks
+			Tooltip: ""
+		}
+
+		Sandomize: {
+			Label: Include Falling Blocks
+			Tooltip: ""
+		}
+
+		KeepDungeon: {
+			Label: Maintain Biomes
+			Tooltip: ""
+		}
+
+		KeepAnvil: {
+			Label: Maintain Crafting Stations
+			Tooltip: ""
+		}
+
+		TileMapsStr: {
+			Label: Tile Map
+			Tooltip: Formatted as (!)input->output, example:!-1,8,Stone->Dirt would turn everything other than air, gold, and stone into dirt
+		}
+
+		WallMapsStr: {
+			Label: Wall Map
+			Tooltip: ""
+		}
+
+		WaveType: {
+			Label: Wave Type
+			Tooltip: ""
+		}
+
+		WavePeriod: {
+			Label: Wave Period
+			Tooltip: ""
+		}
+
+		WaveIntensity: {
+			Label: Wave Intensity
+			Tooltip: ""
+		}
+
+		LiquidCycleInt: {
+			Label: Liquid Cycling
+			Tooltip: -1 = Water->Honey->Lava->Water, 1 = Water->Lava->Honey->Water
+		}
+
+		GreatEnsmallening: {
+			Label: Mini Worlds
+			Tooltip: Note the plural
+		}
+
+		HipsterSpawnSkewInt: {
+			Label: Mini World Underground Spawn
+			Tooltip: -1:never, 0:50/50, 1:always
+		}
+
+		Flipped: {
+			Label: Flipped World
+			Tooltip: ""
+		}
+
+		AlreadyHM: {
+			Label: Hardmode Start
+			Tooltip: ""
+		}
+
+		HMPyramid: {
+			Label: Hardmode Start Spawns WoF loot
+			Tooltip: ""
+		}
+
+		MinefieldDensity: {
+			Label: Minefield
+			Tooltip: Density of landmines
+		}
+
+		PaintIt: {
+			Label: Paint It,
+			Tooltip: Color of paint
+		}
+
+		TreeSolidification: {
+			Label: Solidify Trees
+			Tooltip: ""
+		}
+
+		MoreGen: {
+			Label: More WorldGen
+			Tooltip: How much more the world should generate
+		}
+
+		MoreEvils: {
+			Label: 2 Evils
+			Tooltip: ""
+		}
+
+		BeeHell: {
+			Label: Bee Hell
+			Tooltip: Bee Hell
+		}
+
+		SeedArrayList: {
+			Label: Complex seed SeedArray
+			Tooltip: ""
+		}
+
+		Tooltip: ""
+	}
+
+	SkyGridSetting: {
+		Tooltip: ""
+
+		x: {
+			Label: x
+			Tooltip: ""
+		}
+
+		y: {
+			Label: y
+			Tooltip: ""
+		}
+
+		coordCombineMode: {
+			Label: coord Combine Mode
+			Tooltip: ""
+		}
+
+		parentCombineMode: {
+			Label: parent Combine Mode
+			Tooltip: ""
+		}
+
+		child: {
+			Label: child
+			Tooltip: ""
+		}
+	}
+
+	SkyGridModeEnum: {
+		Tooltip: ""
+		OR.Label: O R
+		AND.Label: A N D
+		XOR.Label: X O R
+		XNOR.Label: X N O R
+	}
+
+	SecretSeedConfig: {
+		Tooltip: ""
+
+		DrunkWorld: {
+			Label: Drunk World
+			Tooltip: ""
+		}
+
+		BeeWorld: {
+			Label: Not The Bees
+			Tooltip: Incompatible with some other secret seeds
+		}
+
+		GitGudWorld: {
+			Label: For The Worthy
+			Tooltip: ""
+		}
+
+		AniversaryWorld: {
+			Label: Celebrationmk10
+			Tooltip: ""
+		}
+
+		DSTWorld: {
+			Label: The Constant
+			Tooltip: ""
+		}
+	}
+
+	OnOffNeutralEnum: {
+		Tooltip: ""
+		OFF.Label: O F F
+		NO_CHANGE.Label: N O_ C H A N G E
+		ON.Label: O N
+	}
+
+	WaveType: {
+		Tooltip: ""
+		Square.Label: Square
+		Sawtooth.Label: Sawtooth
+		Triangle.Label: Triangle
+		Sine.Label: Sine
+	}
+
+	PaintEnum: {
+		Tooltip: ""
+		None.Label: None
+		Red.Label: Red
+		Orange.Label: Orange
+		Yellow.Label: Yellow
+		Lime.Label: Lime
+		Green.Label: Green
+		Teal.Label: Teal
+		Cyan.Label: Cyan
+		SkyBlue.Label: Sky Blue
+		Blue.Label: Blue
+		Purple.Label: Purple
+		Violet.Label: Violet
+		Pink.Label: Pink
+		DeepRed.Label: Deep Red
+		DeepOrange.Label: Deep Orange
+		DeepYellow.Label: Deep Yellow
+		DeepLime.Label: Deep Lime
+		DeepGreen.Label: Deep Green
+		DeepTeal.Label: Deep Teal
+		DeepCyan.Label: Deep Cyan
+		DeepSkyBlue.Label: Deep Sky Blue
+		DeepBlue.Label: Deep Blue
+		DeepPurple.Label: Deep Purple
+		DeepViolet.Label: Deep Violet
+		DeepPink.Label: Deep Pink
+		Black.Label: Black
+		White.Label: White
+		Gray.Label: Gray
+		Brown.Label: Brown
+		Shadow.Label: Shadow
+		Negative.Label: Negative
+	}
+
+	RetwistConfig: {
+		DisplayName: Re-twisting Events
+
+		TrackKillBoss: {
+			Label: Boss Kills Only Twist Once
+			Tooltip: Determines whether repeatedly killing the same boss will continue twisting the world
+		}
+
+		KillBoss: {
+			Label: Boss Kill
+			Tooltip: Does not trigger on Wall of Flesh if "Boss Kills Only Twist Once" is enabled
+		}
+
+		KillWOF: {
+			Label: Wall Of Flesh Kill
+			Tooltip: Does not trigger if "Boss Kills Only Twist Once" is disabled
+		}
+
+		PlayerDeath: {
+			Label: Player Death
+			Tooltip: ""
+		}
+
+		Achievement: {
+			Label: Achievement
+			Tooltip: ""
+		}
+	}
+}

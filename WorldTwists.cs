@@ -132,7 +132,7 @@ namespace WorldTwists {
             0,0,0,0,0,0})]*/
         #endregion
 
-        [Header("Rarity Invert")]
+        [Header("RarityInvert")]
 
         [Label("Invert Blocks")]
         [DefaultValue(false)]
@@ -181,7 +181,7 @@ namespace WorldTwists {
 
 
         #region other
-        [Header("Other Changes")]
+        [Header("OtherChanges")]
 
         [Label("Liquid Cycling")]
         [DefaultValue(0)]
@@ -267,7 +267,7 @@ namespace WorldTwists {
 
         #region secret seeds
 
-        [Header("Secret Seeds")]
+        [Header("SecretSeeds")]
 
         [Label("Pre-Generation Secret Seeds")]
         public SecretSeedConfig preGeneration;
@@ -302,7 +302,7 @@ namespace WorldTwists {
         [DefaultValue(false)]
         public bool KeepAnvil = false;
 
-        [Header("Randomize/Shuffle")]
+        [Header("RandomizeOrShuffle")]
         [Label("Complex seed SeedArray")]
         public List<int> SeedArrayList {
             get => SeedArray;
@@ -359,7 +359,7 @@ namespace WorldTwists {
         public OnOffNeutralEnum DSTWorld;
     }
     public class TwistWorld : ModSystem {
-        public override void ModifyWorldGenTasks(List<GenPass> tasks, ref float totalWeight) {
+        public override void ModifyWorldGenTasks(List<GenPass> tasks, ref double totalWeight) {
             WorldTwists.Instance.Logger.Info("adding worldgen tasks with config:\n" + new Regex("\"SeedArrayList\":\\s*\\[(\\s*0,)+\\s*0\\s*\\]").Replace(JsonConvert.SerializeObject(TwistConfig.Instance, ConfigManager.serializerSettings), ""));
             AddGenTasks(TwistConfig.Instance, tasks);
             WorldTwists.Instance.Logger.Info("added worldgen tasks:\n" + string.Join(", ", tasks.Select(t => t.Name)));
@@ -1699,7 +1699,7 @@ rand.NextString("aaaaa","alaaa","aaala","alala"),
                 return new PassLegacy(dupeCount>0?$"Dungeon {dupeCount+2}":"Dungeon 2: Electric Boogaloo", (GenerationProgress progress, GameConfiguration configuration) => {
 		            int XPos = 0;
                     double approach = 0.1 * dupeCount;
-		            if (WorldGen.dungeonX > Main.maxTilesX/2) {
+		            if (GenVars.dungeonX > Main.maxTilesX/2) {
 			            XPos = WorldGen.genRand.Next((int)(Main.maxTilesX * (0.05+approach)), (int)(Main.maxTilesX * (0.2+approach)));
 		            } else {
 			            XPos = WorldGen.genRand.Next((int)(Main.maxTilesX * (0.8-approach)), (int)(Main.maxTilesX * (0.95-approach)));
