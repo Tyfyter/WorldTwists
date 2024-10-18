@@ -122,16 +122,6 @@ Configs: {
 			Tooltip: ""
 		}
 
-		TileMapsStr: {
-			Label: Tile Map
-			Tooltip: Formatted as (!)input->output, example:!-1,8,Stone->Dirt would turn everything other than air, gold, and stone into dirt
-		}
-
-		WallMapsStr: {
-			Label: Wall Map
-			Tooltip: ""
-		}
-
 		WaveType: {
 			Label: Wave Type
 			Tooltip: ""
@@ -213,6 +203,21 @@ Configs: {
 		}
 
 		Tooltip: ""
+
+		TileMaps: {
+			Label: Tile Maps
+			Tooltip: ""
+		}
+
+		WallMaps: {
+			Label: Wall Maps
+			Tooltip: ""
+		}
+
+		PaintCoating: {
+			Label: Paint Coating
+			Tooltip: ""
+		}
 	}
 
 	SkyGridSetting: {
@@ -358,5 +363,65 @@ Configs: {
 			Label: Achievement
 			Tooltip: ""
 		}
+	}
+
+	TypeMap: {
+		Tooltip: ""
+
+		input: {
+			Label: input
+			Tooltip: ""
+		}
+
+		output: {
+			Label: output
+			Tooltip: ""
+		}
+
+		inverted: {
+			Label: inverted
+			Tooltip: ""
+		}
+	}
+
+	TypeMapper`1: {
+		Tooltip: ""
+
+		input: {
+			Label: input
+			Tooltip: ""
+		}
+
+		output: {
+			Label: output
+			Tooltip: ""
+		}
+
+		inverted: {
+			Label: inverted
+			Tooltip: ""
+		}
+	}
+
+	WallDefinition: {
+		Tooltip: ""
+
+		IsUnloaded: {
+			Label: Is Unloaded
+			Tooltip: ""
+		}
+
+		DisplayName: {
+			Label: Display Name
+			Tooltip: ""
+		}
+	}
+
+	CoatingEnum: {
+		Tooltip: ""
+		None.Label: None
+		Glow.Label: Glow
+		Echo.Label: Echo
+		Both.Label: Both
 	}
 }
