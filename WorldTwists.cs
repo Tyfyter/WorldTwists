@@ -26,6 +26,7 @@ using Terraria.GameContent;
 using Terraria.GameContent.Generation;
 using Terraria.GameContent.UI.Elements;
 using Terraria.GameContent.UI.States;
+using Terraria.GameInput;
 using Terraria.ID;
 using Terraria.IO;
 using Terraria.Localization;
@@ -154,6 +155,7 @@ namespace WorldTwists {
 		[Header("Remapper")]
 		public List<TypeMapper<TileDefinition>> TileMaps = [];
 		public List<TypeMapper<WallDefinition>> WallMaps = [];
+		public List<TypeMapper<LiquidDefinition>> LiquidMaps = [];
 
 
 		[Header("Waver")]
@@ -176,16 +178,6 @@ namespace WorldTwists {
 
 		#region other
 		[Header("OtherChanges")]
-
-		[Label("Liquid Cycling")]
-		[DefaultValue(0)]
-		[Tooltip("-1 = Water->Honey->Lava->Water, 1 = Water->Lava->Honey->Water")]
-		[Range(-1, 1)]
-		public int LiquidCycleInt {
-			get => LiquidCycle;
-			set { LiquidCycle = (sbyte)value; }
-		}
-		internal sbyte LiquidCycle = 0;
 
 		#region mini worlds
 		[Label("Mini Worlds")]
@@ -398,7 +390,7 @@ namespace WorldTwists {
 					dupeCount = 0;
 					for (int i2 = moreGen; i2-- > 0;) {
 						duplicate = TwistExt.GetDuplicatePassForMoreGen(_tasks[i], dupeCount++);
-						if (!(duplicate is null)) {
+						if (duplicate is not null) {
 							tasks.Insert(i + (++indexOffset), duplicate);
 						}
 					}
@@ -408,10 +400,10 @@ namespace WorldTwists {
 				if (!twistConfig.HMPyramid) tasks.Add(new PassLegacy("Starting Hardmode", (p, config) => WorldGen.StartHardmode()));
 				else tasks.Add(new PassLegacy("Starting Hardmode and Placing loot", HMLooter));
 			}
-			if (twistConfig.LiquidCycle != 0) {
+			if (twistConfig.LiquidMaps.Count > 0) {
 				int genIndex = tasks.FindIndex(genpass => genpass.Name.Equals("Settle Liquids Again"));
 				if (genIndex < 0) genIndex = 0;
-				tasks.Insert(genIndex, new PassLegacy("Cycle Liquids", LiquidCycle(twistConfig)));
+				tasks.Insert(genIndex, new PassLegacy("Cycle Liquids", LiquidSwitch(twistConfig)));
 			}
 			if (twistConfig.TreeSolidification)
 				tasks.Add(new PassLegacy("Solidifying Trees", TreeSolidifier));
@@ -419,15 +411,12 @@ namespace WorldTwists {
 				tasks.Add(new PassLegacy("Flipping World", Flipper));
 				tasks.Add(tasks[tasks.FindIndex(genpass => genpass.Name.Equals("Settle Liquids Again"))]);
 			}
-			if (twistConfig.GreatEnsmallening)
-				tasks.Add(new PassLegacy("Mini Worlds", GreatEnsmallener(twistConfig)));
+			if (twistConfig.GreatEnsmallening) tasks.Add(new PassLegacy("Mini Worlds", GreatEnsmallener(twistConfig)));
 			if (twistConfig.WavePeriod != 0 && twistConfig.WaveIntensity != 0) tasks.Add(new PassLegacy("Waving", Waver(twistConfig)));
 			if (twistConfig.SkyGrids != default) tasks.Add(new PassLegacy("SkyGrid", Grid(twistConfig)));
 			if (twistConfig.Shear != 0) tasks.Add(new PassLegacy("Shear", Shear(twistConfig.Shear)));
-			if (twistConfig.Minefield > 0)
-				tasks.Add(new PassLegacy("Placing Landmines", Minefield(twistConfig)));
-			if (twistConfig.TileMaps.Count > 0 || twistConfig.WallMaps.Count > 0)
-				tasks.Add(new PassLegacy("Switcheroo", Switcher(twistConfig)));
+			if (twistConfig.Minefield > 0) tasks.Add(new PassLegacy("Placing Landmines", Minefield(twistConfig)));
+			if (twistConfig.TileMaps.Count > 0 || twistConfig.WallMaps.Count > 0) tasks.Add(new PassLegacy("Switcheroo", Switcher(twistConfig)));
 			if (twistConfig.Shuffled) tasks.Add(new PassLegacy("Shuffle", ShuffledBlocks(twistConfig)));
 			else if (twistConfig.Inverted) tasks.Add(new PassLegacy("Rarity Invert", Invert(twistConfig)));
 			else if (twistConfig.Randomize) tasks.Add(new PassLegacy("Randomize", RandomizedBlocks(twistConfig)));
@@ -435,14 +424,31 @@ namespace WorldTwists {
 			if (twistConfig.Paint > 0) tasks.Add(new PassLegacy("Painting it,", Painter(twistConfig)));
 			if (twistConfig.PaintCoating > 0) tasks.Add(new PassLegacy("Coating it", Coater(twistConfig)));
 		}
-		public static WorldGenLegacyMethod LiquidCycle(TwistConfig twistConfig) => (GenerationProgress progress, GameConfiguration configuration) => {
+		public static WorldGenLegacyMethod LiquidSwitch(TwistConfig twistConfig) => (GenerationProgress progress, GameConfiguration configuration) => {
+			if (progress is not null) progress.Message = "Wet Switcheroo";
 			Tile tile;
-			for(int y = 0; y < Main.maxTilesY; y++) {
-				for(int x = 0; x < Main.maxTilesX; x++) {
-					tile = Main.tile[x, y];
-					tile.LiquidType = (tile.LiquidType+twistConfig.LiquidCycle+3)%3;
+			var watch = new Stopwatch();
+			watch.Start();
+			Dictionary<int, int> liquids = new(4);
+			for (int i = 0; i < 4; i++) {
+				LiquidDefinition newTile = new(i);
+				foreach (TypeMapper<LiquidDefinition> current in twistConfig.LiquidMaps) {
+					if (current.input.Contains(newTile) != current.inverted) {
+						if (i == current.output.Type) break;
+						liquids.Add(i, current.output.Type);
+						break;
+					}
 				}
 			}
+			for (int y = 0; y < Main.maxTilesY - 1; y++) {
+				for (int x = 0; x < Main.maxTilesX; x++) {
+					tile = Main.tile[x, y];
+					if (liquids.TryGetValue(tile.LiquidType, out int newLiquid)) tile.LiquidType = (ushort)newLiquid;
+					//if(Switch(tile))WorldGen.SquareTileFrame(x,y);
+				}
+			}
+			watch.Stop();
+			WorldTwists.Instance.Logger.Info("Switched liquids in" + watch.Elapsed);
 		};
 		public static WorldGenLegacyMethod ShuffledBlocks(TwistConfig twistConfig) => (GenerationProgress progress, GameConfiguration configuration) => {
 			WorldTwists.Instance.Logger.Info("Shuffling Blocks");
@@ -985,7 +991,7 @@ namespace WorldTwists {
 			if (progress is not null) progress.Message = "Solidifying Trees";
 			Tile tile;
 			int wood;
-			Item item = new Item();
+			Item item = new();
 			StructureUtils.Structure strukt;
 			int fails = 0;
 			UnifiedRandom rand = WorldGen.genRand;
@@ -1350,7 +1356,7 @@ namespace WorldTwists {
 			}
 		}
 		public static void BossKillCallback(object threadContext) {
-			List<GenPass> tasks = new List<GenPass>();
+			List<GenPass> tasks = [];
 			TwistWorld.AddGenTasks(RetwistConfig.Instance.KillBoss, tasks);
 			foreach (GenPass item in tasks) {
 				item.Apply(null, null);
@@ -1364,7 +1370,7 @@ namespace WorldTwists {
 			}
 		}
 		public static void PlayerDeathCallback(object threadContext) {
-			List<GenPass> tasks = new List<GenPass>();
+			List<GenPass> tasks = [];
 			TwistWorld.AddGenTasks(RetwistConfig.Instance.PlayerDeath, tasks);
 			foreach (GenPass item in tasks) {
 				item.Apply(null, null);
@@ -1373,15 +1379,13 @@ namespace WorldTwists {
 	}
 	public static class TwistExt {
 		public static void Shuffle<T>(this IList<T> list, UnifiedRandom rng = null) {
-			if(rng is null)rng = Main.rand;
+			rng ??= WorldGen.genRand;
 
 			int n = list.Count;
 			while (n > 1) {
 				n--;
 				int k = rng.Next(n + 1);
-				T value = list[k];
-				list[k] = list[n];
-				list[n] = value;
+				(list[n], list[k]) = (list[k], list[n]);
 			}
 		}
 		public static string NextString(this UnifiedRandom rand, params string[] options) {
@@ -1394,7 +1398,7 @@ namespace WorldTwists {
 			return type<TileID.Count ? TileID.Search.GetName(type) : TileLoader.GetTile(type).Name;
 		}
 		public static byte GetMineColor(ushort tileType, UnifiedRandom random = null) {
-			if(random is null)random = Main.rand;
+			random ??= WorldGen.genRand;
 			switch(tileType) {
 
 				case TileID.Gold:
@@ -1591,7 +1595,7 @@ namespace WorldTwists {
 			return wood;
 		}
 		public static StructureUtils.Structure GetTreetop(int drop, UnifiedRandom rand = null) {
-			if(rand is null)rand = Main.rand;
+			rand ??= WorldGen.genRand;
 
 			string[] map = new string[] {
 			"     ",
@@ -2131,30 +2135,92 @@ rand.NextString("aaaaa","alaaa","aaala","alala"),
 		}
 		IEnumerator IEnumerable.GetEnumerator() => ((IEnumerable)dict).GetEnumerator();
 	}
-	/*class TypeMapElement : ConfigElement {
-		string[] valueStrings;
-
+	[CustomModConfigItem(typeof(LiquidDefinitionConfigElement))]
+	[TypeConverter(typeof(ToFromStringConverter<TileDefinition>))]
+	public class LiquidDefinition : EntityDefinition {
+		public static readonly Func<TagCompound, TileDefinition> DESERIALIZER = Load;
+		public override bool IsUnloaded
+			=> Type < 0 && !(Mod == "Terraria" && Name == "None" || Mod == "" && Name == "");
+		public override int Type => Name switch {
+			nameof(LiquidID.Water) => LiquidID.Water,
+			nameof(LiquidID.Lava) => LiquidID.Lava,
+			nameof(LiquidID.Honey) => LiquidID.Honey,
+			nameof(LiquidID.Shimmer) => LiquidID.Shimmer,
+			_ => -1,
+		};
+		public LiquidDefinition() : base() { }
+		public LiquidDefinition(int type) : base(type switch {
+			LiquidID.Water => nameof(LiquidID.Water),
+			LiquidID.Lava => nameof(LiquidID.Lava),
+			LiquidID.Honey => nameof(LiquidID.Honey),
+			LiquidID.Shimmer => nameof(LiquidID.Shimmer),
+			_ => throw new NotImplementedException(),
+		}) { }
+		public LiquidDefinition(string key) : base(key) { }
+		public LiquidDefinition(string mod, string name) : base(mod, name) { }
+		public static TileDefinition Load(TagCompound tag)
+			=> new(tag.GetString("mod"), tag.GetString("name"));
+	}
+	public class LiquidDefinitionConfigElement : ConfigElement<LiquidDefinition> {
+		protected bool pendingChanges = false;
 		public override void OnBind() {
 			base.OnBind();
-
+			base.TextDisplayFunction = TextDisplayOverride ?? base.TextDisplayFunction;
+			pendingChanges = true;
+			SetupList();
 		}
-
-		void SetValue(TypeMap value) => SetObject(value);
-
-		TypeMap GetValue() => (TypeMap)GetObject();
-
-		string GetStringValue() {
-			return GetValue().ToString();
+		public Func<string> TextDisplayOverride { get; set; }
+		protected void SetupList() {
+			RemoveAllChildren();
+			Main.UIScaleMatrix.Decompose(out Vector3 scale, out _, out _);
+			float left = 26 + 4;
+			float top = 4;
+			float width = 408f * scale.X;
+			for (int i = 3; i >= 0; i--) {
+				LiquidDefinitionElement element = new(i) {
+					Left = new StyleDimension(-left, 1),
+					Top = new StyleDimension(top, 0)
+				};
+				element.OnLeftClick += (_, _) => {
+					Value = new(element.type);
+				};
+				element.getSelectedLiquid = () => Value.Type;
+				element.Initialize();
+				Append(element);
+				left += 26 + 4;
+			}
+			Height.Pixels += 6;
+			Recalculate();
 		}
-
+	}
+	public class LiquidDefinitionElement(int type) : UIElement() {
+		internal Func<int> getSelectedLiquid;
+		readonly Asset<Texture2D> texture = ModContent.Request<Texture2D>($"{nameof(WorldTwists)}/Textures/Liquid_{type}");
+		public readonly int type = type;
+		public override void OnInitialize() {
+			Width.Set(26, 0);
+			Height.Set(26, 0);
+		}
 		public override void Draw(SpriteBatch spriteBatch) {
-			base.Draw(spriteBatch);
-			CalculatedStyle dimensions = base.GetDimensions();
-			Rectangle circleSourceRectangle = new Rectangle(0, 0, (circleTexture.Width - 2) / 2, circleTexture.Height);
-			spriteBatch.Draw(Main.magicPixel, new Rectangle((int)(dimensions.X + dimensions.Width - 25), (int)(dimensions.Y + 4), 22, 22), Color.LightGreen);
-			Corner corner = GetValue();
-			Vector2 circlePositionOffset = new Vector2((int)corner % 2 * 8, (int)corner / 2 * 8);
-			spriteBatch.Draw(circleTexture, new Vector2(dimensions.X + dimensions.Width - 25, dimensions.Y + 4) + circlePositionOffset, circleSourceRectangle, Color.White);
+			float inventoryScale = Main.inventoryScale;
+			Rectangle dimensions = this.GetDimensions().ToRectangle();
+			Color backColor = new(200, 200, 200);
+			if (!PlayerInput.IgnoreMouseInterface && dimensions.Contains(Main.mouseX, Main.mouseY)) {
+				backColor = Color.White;
+			}
+			bool selectedBack = getSelectedLiquid is not null && getSelectedLiquid() == type;
+			spriteBatch.Draw(
+				selectedBack ? TextureAssets.InventoryBack14.Value : TextureAssets.InventoryBack.Value,
+				dimensions,
+				backColor
+			);
+			dimensions.Inflate(-5, -5);
+			spriteBatch.Draw(
+				texture.Value,
+				dimensions,
+				backColor
+			);
 		}
-	}*/
+	}
+	
 }

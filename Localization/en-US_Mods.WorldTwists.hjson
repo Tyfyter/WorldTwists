@@ -218,6 +218,11 @@ Configs: {
 			Label: Paint Coating
 			Tooltip: ""
 		}
+
+		LiquidMaps: {
+			Label: Liquid Maps
+			Tooltip: ""
+		}
 	}
 
 	SkyGridSetting: {
@@ -423,5 +428,14 @@ Configs: {
 		Glow.Label: Glow
 		Echo.Label: Echo
 		Both.Label: Both
+	}
+
+	LiquidDefinition: {
+		Tooltip: ""
+
+		IsUnloaded: {
+			Label: Is Unloaded
+			Tooltip: ""
+		}
 	}
 }
