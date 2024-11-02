@@ -331,17 +331,11 @@ namespace WorldTwists {
 	public class SecretSeedConfig : ModConfig {
 		public override bool Autoload(ref string name) => false;
 		public override ConfigScope Mode => ConfigScope.ServerSide;
-		[Label("Drunk World")]
-		public OnOffNeutralEnum DrunkWorld;
-		[Label("Not The Bees")]
-		[Tooltip("Incompatible with some other secret seeds")]
-		public OnOffNeutralEnum BeeWorld;
-		[Label("For The Worthy")]
-		public OnOffNeutralEnum GitGudWorld;
-		[Label("Celebrationmk10")]
-		public OnOffNeutralEnum AniversaryWorld;
-		[Label("The Constant")]
-		public OnOffNeutralEnum DSTWorld;
+		public OnOffNeutralEnum DrunkWorld { get; set; }
+		public OnOffNeutralEnum BeeWorld { get; set; }
+		public OnOffNeutralEnum GitGudWorld { get; set; }
+		public OnOffNeutralEnum AniversaryWorld { get; set; }
+		public OnOffNeutralEnum DSTWorld { get; set; }
 	}
 	public class TwistWorld : ModSystem {
 		public override void ModifyWorldGenTasks(List<GenPass> tasks, ref double totalWeight) {
@@ -1861,7 +1855,7 @@ rand.NextString("aaaaa","alaaa","aaala","alala"),
 				WorldGen.tenthAnniversaryWorldGen = Main.tenthAnniversaryWorld = false;
 				break;
 			}
-			switch (config.DrunkWorld) {
+			switch (config.DSTWorld) {
 				case OnOffNeutralEnum.ON:
 				WorldGen.dontStarveWorldGen = Main.dontStarveWorld = true;
 				break;
