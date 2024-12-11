@@ -52,7 +52,7 @@ namespace WorldTwists {
 		public override void Load() {
 			if(Instance!=null) Logger.Warn("WorldTwists Instance already loaded at Load()");
 			Instance = this;
-			Main.Achievements.OnAchievementCompleted += OnAchievementCompleted;
+			if (!Main.dedServ) Main.Achievements.OnAchievementCompleted += OnAchievementCompleted;
 			this.AddConfig(typeof(TwistConfig).Name, new TwistConfig());
 			this.AddConfig(typeof(RetwistConfig).Name, new RetwistConfig());
 		}
@@ -1176,8 +1176,8 @@ namespace WorldTwists {
 			SkyGridSetting skyGrids = twistConfig.SkyGrids;
 			for (int y = oobtiles; y < height - oobtiles; y++) {
 				for (int x = oobtiles; x < width - oobtiles; x++) {
-					if (!(Main.tile[x, y - 1].LiquidAmount > 0 || TileID.Sets.PreventsTileRemovalIfOnTopOfIt[Main.tile[x, y].TileType]) && !skyGrids.Combine(x, y)) {
-						WorldGen.KillTile(x, y);
+					if (!(Main.tile[x, y - 1].LiquidAmount > 0 || TileID.Sets.PreventsTileRemovalIfOnTopOfIt[Main.tile[x, y - 1].TileType] || Main.tileFrameImportant[Main.tile[x, y].TileType]) && !skyGrids.Combine(x, y)) {
+						WorldGen.KillTile(x, y, noItem: true);
 					}
 				}
 			}

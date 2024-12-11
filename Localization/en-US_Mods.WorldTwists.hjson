@@ -94,7 +94,7 @@ Configs: {
 
 		JankLoot: {
 			Label: Janky Door Loot
-			Tooltip: ""
+			Tooltip: If disabled, prevents doors being placed in weird ways that result in unpredictable loot
 		}
 
 		RandomizePlatforms: {
